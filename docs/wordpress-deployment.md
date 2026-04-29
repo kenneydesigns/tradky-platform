@@ -13,7 +13,7 @@ Build command: npm run build
 Publish/output directory: dist
 ```
 
-4. Keep `VITE_AI_MODE=mock` for the current MVP.
+4. Set `VITE_AI_MODE=api` after `OPENAI_API_KEY` is configured in Vercel.
 5. Deploy and copy the production URL.
 6. Add the iframe snippet below to the protected WordPress page.
 
@@ -64,6 +64,5 @@ The Vite config uses relative asset paths, so the built app can work from a subf
 
 - Project data is saved in each user's browser with `localStorage`.
 - Clearing browser data will remove locally saved projects.
-- The mock AI service does not call an external API yet.
-- Real API keys should live in a server-side function, not in WordPress page HTML and not in a `VITE_` environment variable.
-- When real AI is added, point `VITE_AI_ENDPOINT` to a server endpoint such as `/api/evaluate`.
+- The OpenAI API key must live in the Vercel server environment, not in WordPress page HTML and not in a `VITE_` environment variable.
+- Point `VITE_AI_ENDPOINT` to `/api/evaluate`.

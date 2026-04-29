@@ -86,7 +86,7 @@ export const TextInputPanel = ({ project, isEvaluating, onRunEvaluation, onUpdat
           <FileText size={18} />
           <span>
             {project.solicitationText.trim() && project.proposalText.trim()
-              ? "Ready for mock evaluation"
+              ? "Ready for evaluation"
               : "Add solicitation and draft text for the best evaluation"}
           </span>
         </div>

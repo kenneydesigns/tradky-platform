@@ -1,7 +1,7 @@
 import { EvaluateInput, EvaluationResult } from "../types";
 import { generateMockEvaluation } from "./mockAi";
 
-const AI_MODE = import.meta.env.VITE_AI_MODE ?? "mock";
+const AI_MODE = import.meta.env.VITE_AI_MODE ?? (import.meta.env.PROD ? "api" : "mock");
 const AI_ENDPOINT = import.meta.env.VITE_AI_ENDPOINT ?? "/api/evaluate";
 
 export const evaluateProposal = async (input: EvaluateInput): Promise<EvaluationResult> => {
@@ -18,7 +18,18 @@ export const evaluateProposal = async (input: EvaluateInput): Promise<Evaluation
   });
 
   if (!response.ok) {
-    throw new Error("Evaluation request failed");
+    let message = "Evaluation request failed";
+
+    try {
+      const payload = (await response.json()) as { error?: string };
+      if (payload.error) {
+        message = payload.error;
+      }
+    } catch {
+      // Keep the generic message when the server does not return JSON.
+    }
+
+    throw new Error(message);
   }
 
   return response.json() as Promise<EvaluationResult>;

@@ -48,7 +48,7 @@ export const EvaluationPanel = ({ evaluation }: EvaluationPanelProps) => {
     <div className="evaluation-panel">
       <section className="score-band">
         <div>
-          <p className="eyebrow">Mock readiness score</p>
+          <p className="eyebrow">Readiness score</p>
           <h2>{evaluation.readinessScore}</h2>
         </div>
         <span className="score-label">{scoreLabel(evaluation.readinessScore)}</span>
