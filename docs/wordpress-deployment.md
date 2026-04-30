@@ -67,3 +67,4 @@ The Vite config uses relative asset paths, so the built app can work from a subf
 - The OpenAI API key must live in the Vercel server environment, not in WordPress page HTML and not in a `VITE_` environment variable.
 - Point `VITE_AI_ENDPOINT` to `/api/evaluate`.
 - Point `VITE_AI_DRAFT_ENDPOINT` to `/api/draft-sections`.
+- Point `VITE_AI_SUGGESTIONS_ENDPOINT` to `/api/section-suggestions`.

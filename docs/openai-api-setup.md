@@ -1,6 +1,6 @@
 # OpenAI API Setup
 
-This app uses Vercel serverless functions at `/api/evaluate` and `/api/draft-sections` to call OpenAI. The browser never receives the OpenAI API key.
+This app uses Vercel serverless functions at `/api/evaluate`, `/api/draft-sections`, and `/api/section-suggestions` to call OpenAI. The browser never receives the OpenAI API key.
 
 ## 1. Add OpenAI API credits
 
@@ -28,6 +28,7 @@ OPENAI_REASONING_EFFORT=low
 VITE_AI_MODE=api
 VITE_AI_ENDPOINT=/api/evaluate
 VITE_AI_DRAFT_ENDPOINT=/api/draft-sections
+VITE_AI_SUGGESTIONS_ENDPOINT=/api/section-suggestions
 ```
 
 `VITE_AI_MODE=api` is optional for production because the deployed app defaults to the API endpoints. It is useful to make the setting explicit. `OPENAI_MODEL` can be changed later. The default code value is `gpt-5.4-mini`, a lower-cost model recommended by OpenAI docs for latency and cost-sensitive workloads.
@@ -42,4 +43,4 @@ npx vercel deploy --prod --yes
 
 ## 5. Test
 
-Open the Vercel app, paste solicitation and draft proposal text, run an evaluation, and use the builder's AI draft actions. If the key or credits are missing, the app will show the server error returned by the relevant API endpoint.
+Open the Vercel app, paste solicitation and draft proposal text, run an evaluation, and use the builder's AI draft and suggestion actions. If the key or credits are missing, the app will show the server error returned by the relevant API endpoint.

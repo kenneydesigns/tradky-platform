@@ -1,7 +1,8 @@
 import { ChangeEvent, useRef, useState } from "react";
 import { ClipboardPaste, FileText, Upload } from "lucide-react";
 import { Project } from "../types";
-import { readTextFile } from "../utils/textFiles";
+import { ACCEPTED_SOURCE_FILE_TYPES, readTextFile } from "../utils/textFiles";
+import { prefillSectionsFromTechnicalVolume } from "../utils/volumeSectionHydrator";
 
 type TextInputPanelProps = {
   project: Project;
@@ -16,22 +17,38 @@ type TextAreaCardProps = {
   value: string;
   placeholder: string;
   onChange: (value: string) => void;
+  onUpload?: (value: string, file: File) => string | void;
 };
 
 const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
 
-const TextAreaCard = ({ title, icon, value, placeholder, onChange }: TextAreaCardProps) => {
+const TextAreaCard = ({ title, icon, value, placeholder, onChange, onUpload }: TextAreaCardProps) => {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [fileName, setFileName] = useState("");
+  const [fileError, setFileError] = useState("");
+  const [isReadingFile, setIsReadingFile] = useState(false);
 
   const handleFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const text = await readTextFile(file);
-    setFileName(file.name);
-    onChange(text);
-    event.target.value = "";
+    setIsReadingFile(true);
+    setFileError("");
+
+    try {
+      const text = await readTextFile(file);
+      const uploadStatus = onUpload?.(text, file);
+      if (!onUpload) {
+        onChange(text);
+      }
+      setFileName(uploadStatus || file.name);
+    } catch (caught) {
+      setFileName("");
+      setFileError(caught instanceof Error ? caught.message : "File upload failed");
+    } finally {
+      setIsReadingFile(false);
+      event.target.value = "";
+    }
   };
 
   return (
@@ -41,25 +58,46 @@ const TextAreaCard = ({ title, icon, value, placeholder, onChange }: TextAreaCar
           <p className="eyebrow">{icon === "solicitation" ? "Topic source" : "Draft source"}</p>
           <h2>{title}</h2>
         </div>
-        <button className="button compact" type="button" onClick={() => inputRef.current?.click()}>
+        <button className="button compact" type="button" disabled={isReadingFile} onClick={() => inputRef.current?.click()}>
           <Upload size={16} />
-          Upload Text
+          {isReadingFile ? "Reading..." : "Upload File"}
         </button>
-        <input ref={inputRef} className="visually-hidden" type="file" accept=".txt,.md,.rtf,.csv" onChange={handleFile} />
+        <input
+          ref={inputRef}
+          className="visually-hidden"
+          type="file"
+          accept={ACCEPTED_SOURCE_FILE_TYPES}
+          onChange={handleFile}
+        />
       </header>
 
       <textarea value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
 
       <footer className="text-card-footer">
         <span>{countWords(value)} words</span>
-        <span>{fileName || "Paste or upload text"}</span>
+        <span className={fileError ? "file-error" : ""}>{fileError || fileName || "Paste or upload a source file"}</span>
       </footer>
     </section>
   );
 };
 
 export const TextInputPanel = ({ project, isEvaluating, onRunEvaluation, onUpdateProject }: TextInputPanelProps) => {
-  const hasInputs = project.solicitationText.trim().length > 0 || project.proposalText.trim().length > 0;
+  const hasSolicitation = project.solicitationText.trim().length > 0;
+  const hasTechnicalVolume = project.proposalText.trim().length > 0;
+
+  const updateTechnicalVolumeFromUpload = (proposalText: string, file: File) => {
+    const result = prefillSectionsFromTechnicalVolume(project.sections, proposalText);
+
+    onUpdateProject({
+      ...project,
+      proposalText,
+      sections: result.sections,
+    });
+
+    return result.matchedKeys.length
+      ? `${file.name} • ${result.matchedKeys.length} builder sections prefilled`
+      : `${file.name} • volume loaded`;
+  };
 
   return (
     <div className="input-panel">
@@ -76,8 +114,9 @@ export const TextInputPanel = ({ project, isEvaluating, onRunEvaluation, onUpdat
           title="Draft Proposal / Technical Volume"
           icon="draft"
           value={project.proposalText}
-          placeholder="Paste the current technical volume draft, notes, outline, or section fragments."
+          placeholder="Paste or upload the current technical volume draft, notes, outline, or section fragments."
           onChange={(proposalText) => onUpdateProject({ ...project, proposalText })}
+          onUpload={updateTechnicalVolumeFromUpload}
         />
       </div>
 
@@ -85,14 +124,16 @@ export const TextInputPanel = ({ project, isEvaluating, onRunEvaluation, onUpdat
         <div>
           <FileText size={18} />
           <span>
-            {project.solicitationText.trim() && project.proposalText.trim()
-              ? "Ready for evaluation"
-              : "Add solicitation and draft text for the best evaluation"}
+            {hasSolicitation && hasTechnicalVolume
+              ? "Ready to analyze the technical volume"
+              : hasTechnicalVolume
+                ? "Ready to analyze; add solicitation text for tighter review"
+              : "Add or upload a technical volume for analysis"}
           </span>
         </div>
-        <button className="button primary" type="button" disabled={!hasInputs || isEvaluating} onClick={onRunEvaluation}>
+        <button className="button primary" type="button" disabled={!hasTechnicalVolume || isEvaluating} onClick={onRunEvaluation}>
           <ClipboardPaste size={18} />
-          {isEvaluating ? "Evaluating..." : "Run Evaluation"}
+          {isEvaluating ? "Analyzing..." : "Analyze Technical Volume"}
         </button>
       </div>
     </div>

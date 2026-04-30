@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { Download, FileDown, WandSparkles } from "lucide-react";
-import { Project, VolumeSection, VolumeSectionKey } from "../types";
-import { draftVolumeSections } from "../services/aiClient";
+import { Download, FileDown, Gauge, Lightbulb, WandSparkles } from "lucide-react";
+import { Project, SectionSuggestion, VolumeSection, VolumeSectionKey } from "../types";
+import { draftVolumeSections, suggestVolumeSections } from "../services/aiClient";
 import { exportDocx, exportMarkdown } from "../utils/exporters";
+import { analyzeSectionStrength, SectionStrength } from "../utils/sectionStrength";
 
 type VolumeBuilderProps = {
   project: Project;
@@ -11,22 +12,57 @@ type VolumeBuilderProps = {
 
 const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
 
+const strengthTone = (score: number) => {
+  if (score >= 82) return "strong";
+  if (score >= 62) return "solid";
+  if (score >= 38) return "developing";
+  return "weak";
+};
+
+const createStrengthMap = (sections: VolumeSection[]) =>
+  sections.reduce(
+    (map, section) => ({
+      ...map,
+      [section.key]: analyzeSectionStrength(section),
+    }),
+    {} as Record<VolumeSectionKey, SectionStrength>,
+  );
+
 export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) => {
   const [activeKey, setActiveKey] = useState<VolumeSectionKey>(project.sections[0].key);
   const [draftingTarget, setDraftingTarget] = useState<"empty" | VolumeSectionKey | null>(null);
+  const [suggestingTarget, setSuggestingTarget] = useState<"all" | VolumeSectionKey | null>(null);
+  const [suggestionsByKey, setSuggestionsByKey] = useState<Partial<Record<VolumeSectionKey, SectionSuggestion>>>({});
   const [draftError, setDraftError] = useState("");
+  const [suggestionError, setSuggestionError] = useState("");
   const activeSection = project.sections.find((section) => section.key === activeKey) ?? project.sections[0];
+  const activeSuggestion = suggestionsByKey[activeSection.key];
 
   const totalWords = useMemo(
     () => project.sections.reduce((sum, section) => sum + countWords(section.content), 0),
     [project.sections],
   );
+  const sectionStrengths = useMemo(() => createStrengthMap(project.sections), [project.sections]);
+  const activeStrength = sectionStrengths[activeSection.key];
+  const displayStrengthScore = activeSuggestion?.strengthScore ?? activeStrength.score;
+  const displayStrengthLabel = activeSuggestion ? "AI reviewed" : activeStrength.label;
   const emptySectionKeys = useMemo(
     () => project.sections.filter((section) => !section.content.trim()).map((section) => section.key),
     [project.sections],
   );
 
+  const clearSuggestions = (sectionKeys: VolumeSectionKey[]) => {
+    setSuggestionsByKey((current) => {
+      const next = { ...current };
+      sectionKeys.forEach((key) => {
+        delete next[key];
+      });
+      return next;
+    });
+  };
+
   const updateSection = (section: VolumeSection, content: string) => {
+    clearSuggestions([section.key]);
     onUpdateProject({
       ...project,
       sections: project.sections.map((existing) => (existing.key === section.key ? { ...existing, content } : existing)),
@@ -35,6 +71,7 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
 
   const applySectionDrafts = (draftedSections: VolumeSection[]) => {
     const draftByKey = new Map(draftedSections.map((section) => [section.key, section.content]));
+    clearSuggestions(draftedSections.map((section) => section.key));
 
     onUpdateProject({
       ...project,
@@ -61,12 +98,42 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
     }
   };
 
+  const requestSuggestions = async (sectionKeys: VolumeSectionKey[], target: "all" | VolumeSectionKey) => {
+    if (!sectionKeys.length) return;
+
+    setSuggestingTarget(target);
+    setSuggestionError("");
+
+    try {
+      const result = await suggestVolumeSections({ project, sectionKeys });
+      setSuggestionsByKey((current) => ({
+        ...current,
+        ...Object.fromEntries(result.sections.map((section) => [section.key, section])),
+      }));
+    } catch (caught) {
+      setSuggestionError(caught instanceof Error ? caught.message : "Section suggestions failed");
+    } finally {
+      setSuggestingTarget(null);
+    }
+  };
+
   const draftEmptySections = () => {
     void draftSections(emptySectionKeys, "empty");
   };
 
   const draftActiveSection = () => {
     void draftSections([activeSection.key], activeSection.key);
+  };
+
+  const refreshAllSuggestions = () => {
+    void requestSuggestions(
+      project.sections.map((section) => section.key),
+      "all",
+    );
+  };
+
+  const refreshActiveSuggestions = () => {
+    void requestSuggestions([activeSection.key], activeSection.key);
   };
 
   return (
@@ -86,6 +153,10 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
             <WandSparkles size={17} />
             {draftingTarget === "empty" ? "Drafting..." : "AI Draft Empty Sections"}
           </button>
+          <button className="button" type="button" disabled={suggestingTarget !== null} onClick={refreshAllSuggestions}>
+            <Lightbulb size={17} />
+            {suggestingTarget === "all" ? "Reviewing..." : "AI Suggestions"}
+          </button>
           <button className="button" type="button" onClick={() => exportMarkdown(project)}>
             <Download size={17} />
             Markdown
@@ -98,20 +169,33 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
       </header>
 
       {draftError ? <div className="error-banner">{draftError}</div> : null}
+      {suggestionError ? <div className="error-banner">{suggestionError}</div> : null}
 
       <div className="builder-layout">
         <nav className="section-nav" aria-label="Technical volume sections">
-          {project.sections.map((section) => (
-            <button
-              className={section.key === activeSection.key ? "active" : ""}
-              type="button"
-              key={section.key}
-              onClick={() => setActiveKey(section.key)}
-            >
-              <span>{section.title}</span>
-              <small>{countWords(section.content)} words</small>
-            </button>
-          ))}
+          {project.sections.map((section) => {
+            const strength = sectionStrengths[section.key];
+
+            return (
+              <button
+                className={section.key === activeSection.key ? "active" : ""}
+                type="button"
+                key={section.key}
+                onClick={() => setActiveKey(section.key)}
+              >
+                <div className="section-nav-row">
+                  <span>{section.title}</span>
+                  <small>{countWords(section.content)} words</small>
+                </div>
+                <div className="strength-meter" aria-label={`${section.title} strength ${strength.score}%`}>
+                  <span className={strengthTone(strength.score)} style={{ width: `${strength.score}%` }} />
+                </div>
+                <small className="strength-caption">
+                  {strength.label} • {strength.score}%
+                </small>
+              </button>
+            );
+          })}
         </nav>
 
         <section className="section-editor">
@@ -122,12 +206,54 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
             </div>
             <div className="section-editor-actions">
               <span>{countWords(activeSection.content)} words</span>
+              <button
+                className="button compact"
+                type="button"
+                disabled={suggestingTarget !== null}
+                onClick={refreshActiveSuggestions}
+              >
+                <Lightbulb size={16} />
+                {suggestingTarget === activeSection.key ? "Reviewing..." : "AI Suggestions"}
+              </button>
               <button className="button compact" type="button" disabled={draftingTarget !== null} onClick={draftActiveSection}>
                 <WandSparkles size={16} />
                 {draftingTarget === activeSection.key ? "Drafting..." : "AI Draft This Section"}
               </button>
             </div>
           </header>
+          <div className="section-insights">
+            <section className="strength-insight" aria-label={`${activeSection.title} strength meter`}>
+              <div className="insight-heading">
+                <Gauge size={17} />
+                <span>Strength</span>
+                <strong>{displayStrengthScore}%</strong>
+              </div>
+              <div className="strength-meter large">
+                <span className={strengthTone(displayStrengthScore)} style={{ width: `${displayStrengthScore}%` }} />
+              </div>
+              <p>{displayStrengthLabel}</p>
+              <small>{activeStrength.details.join(" • ")}</small>
+            </section>
+
+            <section className="ai-suggestions" aria-label={`${activeSection.title} AI suggestions`}>
+              <div className="insight-heading">
+                <Lightbulb size={17} />
+                <span>AI Suggestions</span>
+              </div>
+              {activeSuggestion ? (
+                <>
+                  <p>{activeSuggestion.summary}</p>
+                  <ul>
+                    {activeSuggestion.suggestions.map((suggestion) => (
+                      <li key={suggestion}>{suggestion}</li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <p>Run AI suggestions to get section-specific coaching for this draft.</p>
+              )}
+            </section>
+          </div>
           <textarea
             value={activeSection.content}
             onChange={(event) => updateSection(activeSection, event.target.value)}

@@ -1,4 +1,14 @@
-import { DraftSectionsInput, DraftSectionsResult, EvaluateInput, EvaluationResult, VolumeSectionKey } from "../types";
+import {
+  DraftSectionsInput,
+  DraftSectionsResult,
+  EvaluateInput,
+  EvaluationResult,
+  SectionSuggestionsInput,
+  SectionSuggestionsResult,
+  VolumeSection,
+  VolumeSectionKey,
+} from "../types";
+import { analyzeSectionStrength } from "../utils/sectionStrength";
 
 const sentence = (text: string, fallback: string) => {
   const cleaned = text.replace(/\s+/g, " ").trim();
@@ -170,6 +180,80 @@ export const generateMockDraftSections = async (input: DraftSectionsInput): Prom
       .map((section) => ({
         ...section,
         content: drafts[section.key],
-      })),
+    })),
+  };
+};
+
+const sectionSuggestionFallbacks: Record<VolumeSectionKey, string[]> = {
+  problemNeed: [
+    "Quantify the mission pain with a baseline, affected user, and current operational consequence.",
+    "Make the urgency explicit so reviewers know why this problem matters now.",
+    "Tie the need back to solicitation language or a named customer requirement.",
+  ],
+  technicalApproach: [
+    "State the technical hypothesis before describing components or activities.",
+    "Add measurable success criteria, test methods, and baseline comparison points.",
+    "Clarify which tasks will generate evidence that feasibility has been proven.",
+  ],
+  innovation: [
+    "Compare the approach against current alternatives instead of only describing internal novelty.",
+    "Name the defensible technical differentiator and what evidence would prove it.",
+    "Avoid overclaiming maturity; separate what is proven from what Phase I will validate.",
+  ],
+  workPlan: [
+    "Break the plan into task-level objectives with owners, deliverables, timing, and decision gates.",
+    "Put the riskiest feasibility questions early in the schedule.",
+    "Connect every deliverable to the evidence needed for Phase II or transition.",
+  ],
+  team: [
+    "Map each contributor to the technical, commercial, or transition work they own.",
+    "Add qualifications that directly reduce reviewer concern about execution risk.",
+    "Call out missing capabilities and how advisors, partners, or hires will cover them.",
+  ],
+  commercializationTransition: [
+    "Identify the first customer segment, use case, buyer, and procurement trigger.",
+    "Connect Phase I/II evidence to a specific transition or adoption milestone.",
+    "Quantify the market or adoption path with realistic pricing, pilots, or partner assumptions.",
+  ],
+  risks: [
+    "List specific technical, schedule, budget, regulatory, security, and adoption risks.",
+    "Pair each risk with likelihood, impact, mitigation, and fallback evidence.",
+    "Tie risk retirement to work plan tasks rather than keeping it generic.",
+  ],
+  budgetNarrative: [
+    "Connect labor and non-labor costs to work plan tasks and deliverables.",
+    "Explain why materials, travel, software, and subcontractors are necessary.",
+    "Use the narrative to show cost realism, not just cost categories.",
+  ],
+};
+
+const mockSuggestionForSection = (section: VolumeSection) => {
+  const strength = analyzeSectionStrength(section);
+  const missingSignalSuggestions = strength.missingSignals.map((signal) => `Add ${signal} to strengthen this section.`);
+  const suggestions = [...missingSignalSuggestions, ...sectionSuggestionFallbacks[section.key]].slice(0, 4);
+
+  return {
+    key: section.key,
+    title: section.title,
+    strengthScore: strength.score,
+    summary:
+      strength.score >= 75
+        ? "This section has a solid base; the next gains come from sharper evidence and reviewer-facing specificity."
+        : "This section needs more concrete reviewer evidence before it will feel competitive.",
+    suggestions,
+  };
+};
+
+export const generateMockSectionSuggestions = async ({
+  project,
+  sectionKeys,
+}: SectionSuggestionsInput): Promise<SectionSuggestionsResult> => {
+  await new Promise((resolve) => window.setTimeout(resolve, 650));
+
+  const selectedKeys = new Set(sectionKeys ?? project.sections.map((section) => section.key));
+
+  return {
+    generatedAt: new Date().toISOString(),
+    sections: project.sections.filter((section) => selectedKeys.has(section.key)).map(mockSuggestionForSection),
   };
 };

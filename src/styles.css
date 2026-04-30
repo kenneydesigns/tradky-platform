@@ -544,6 +544,11 @@ select:focus {
   font-size: 0.86rem;
 }
 
+.file-error {
+  color: var(--red);
+  font-weight: 750;
+}
+
 .action-strip {
   display: flex;
   align-items: center;
@@ -639,12 +644,10 @@ select:focus {
 }
 
 .section-nav button {
-  display: flex;
+  display: grid;
   min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 52px;
+  gap: 7px;
+  min-height: 76px;
   padding: 9px 10px;
   border: 0;
   border-radius: 6px;
@@ -657,6 +660,14 @@ select:focus {
   background: var(--accent-soft);
 }
 
+.section-nav-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .section-nav span {
   overflow-wrap: anywhere;
   font-weight: 800;
@@ -665,6 +676,37 @@ select:focus {
 .section-nav small {
   flex: 0 0 auto;
   color: var(--muted);
+}
+
+.strength-meter {
+  position: relative;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e3e9e2;
+}
+
+.strength-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--red);
+}
+
+.strength-meter span.developing {
+  background: var(--amber);
+}
+
+.strength-meter span.solid {
+  background: var(--blue);
+}
+
+.strength-meter span.strong {
+  background: var(--accent);
+}
+
+.strength-caption {
+  font-weight: 750;
 }
 
 .section-editor {
@@ -680,6 +722,61 @@ select:focus {
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.section-insights {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.75fr) minmax(0, 1.25fr);
+  gap: 18px;
+  margin: 14px 0;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.strength-insight,
+.ai-suggestions {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.insight-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-weight: 850;
+}
+
+.insight-heading svg {
+  color: var(--accent);
+}
+
+.insight-heading strong {
+  margin-left: auto;
+  font-size: 1.15rem;
+}
+
+.strength-meter.large {
+  height: 10px;
+}
+
+.strength-insight p,
+.ai-suggestions p,
+.strength-insight small {
+  margin: 0;
+  color: var(--muted);
+}
+
+.ai-suggestions ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding-left: 18px;
+  color: #34413c;
+  line-height: 1.45;
 }
 
 .section-editor textarea {
@@ -779,7 +876,8 @@ select {
 
   .input-grid,
   .evaluation-grid,
-  .builder-layout {
+  .builder-layout,
+  .section-insights {
     grid-template-columns: 1fr;
   }
 

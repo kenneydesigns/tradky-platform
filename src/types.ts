@@ -60,3 +60,21 @@ export type DraftSectionsResult = {
   generatedAt: string;
   sections: VolumeSection[];
 };
+
+export type SectionSuggestion = {
+  key: VolumeSectionKey;
+  title: string;
+  strengthScore: number;
+  summary: string;
+  suggestions: string[];
+};
+
+export type SectionSuggestionsInput = {
+  project: Project;
+  sectionKeys?: VolumeSectionKey[];
+};
+
+export type SectionSuggestionsResult = {
+  generatedAt: string;
+  sections: SectionSuggestion[];
+};
