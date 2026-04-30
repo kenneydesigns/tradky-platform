@@ -152,7 +152,7 @@ const normalizeRubricScores = (value: unknown): EvaluationResult["rubricScores"]
   const scoreByKey = new Map(
     value
       .filter(isRecord)
-      .filter((item) => typeof item.key === "string" && RUBRIC_CATEGORY_KEYS.includes(item.key))
+      .filter((item) => typeof item.key === "string" && (RUBRIC_CATEGORY_KEYS as readonly string[]).includes(item.key))
       .map((item) => [item.key, item]),
   );
 
@@ -178,7 +178,7 @@ const normalizeRubricScores = (value: unknown): EvaluationResult["rubricScores"]
 const normalizeCostVolumeChecks = (value: unknown): EvaluationResult["costVolumeChecks"] => {
   if (!Array.isArray(value)) return undefined;
 
-  return DAF_AFWERX_COST_VOLUME_CHECKS.map((question, index) => {
+  return DAF_AFWERX_COST_VOLUME_CHECKS.map((question: string, index: number) => {
     const item = value.find((candidate) => isRecord(candidate) && candidate.question === question) ?? value[index];
     const status = isRecord(item) && ["YES", "NO", "N/A"].includes(String(item.status)) ? String(item.status) : "N/A";
 
