@@ -1,4 +1,10 @@
 import {
+  DAF_AFWERX_COST_VOLUME_CHECKS,
+  DAF_AFWERX_RUBRIC,
+  getDafAfwerxRatingLabel,
+  getDafAfwerxReadinessScore,
+} from "../data/dafAfwerxRubric";
+import {
   DraftSectionsInput,
   DraftSectionsResult,
   EvaluateInput,
@@ -20,6 +26,35 @@ const sentence = (text: string, fallback: string) => {
 
 const contains = (text: string, terms: string[]) => terms.some((term) => text.toLowerCase().includes(term));
 
+const scoreFromSignals = (...signals: boolean[]) => Math.min(5, Math.max(1, 1 + signals.filter(Boolean).length));
+
+const rubricScore = (
+  key: "commercialization" | "defenseNeed" | "technicalMerit",
+  score: number,
+  rationale: string,
+  strengths: string[],
+  gaps: string[],
+) => {
+  const category = DAF_AFWERX_RUBRIC.find((item) => item.key === key);
+  const normalizedScore = Math.min(5, Math.max(1, Math.round(score)));
+
+  return {
+    key,
+    title: category?.title ?? key,
+    score: normalizedScore,
+    label: getDafAfwerxRatingLabel(normalizedScore),
+    rationale,
+    strengths,
+    gaps,
+  };
+};
+
+const costCheck = (question: string, status: "YES" | "NO" | "N/A", rationale: string) => ({
+  question,
+  status,
+  rationale,
+});
+
 export const generateMockEvaluation = async ({
   project,
   solicitationText,
@@ -33,72 +68,163 @@ export const generateMockEvaluation = async ({
   const hasMetrics = contains(combined, ["metric", "threshold", "kpi", "trl", "success criteria", "test"]);
   const hasBudget = contains(combined, ["budget", "cost", "labor", "materials", "subcontract"]);
   const hasRisk = contains(combined, ["risk", "mitigation", "dependency", "fallback"]);
-  const baseScore = 56;
-  const score =
-    baseScore +
-    (hasTransition ? 10 : 0) +
-    (hasCommercial ? 8 : 0) +
-    (hasMetrics ? 10 : 0) +
-    (hasBudget ? 6 : 0) +
-    (hasRisk ? 5 : 0) +
-    Math.min(8, Math.floor(proposalText.length / 1500));
+  const hasDefenseNeed = contains(combined, ["mission", "operational", "capability gap", "warfighter", "airmen", "guardian"]);
+  const hasUrgency = contains(combined, ["urgent", "immediate", "critical", "current", "near-term"]);
+  const hasBreadth = contains(combined, ["majcom", "field command", "multiple units", "bases", "platforms", "airframes"]);
+  const hasUseCase = contains(combined, ["use case", "operational application", "end user", "customer", "stakeholder"]);
+  const hasBusinessPlan = contains(combined, ["business plan", "go-to-market", "pricing", "sales", "channel", "profit"]);
+  const hasPrivateInterest = contains(combined, ["investor", "non-government", "private", "revenue", "pilot", "partner"]);
+  const hasTechnicalApproach = contains(combined, ["approach", "architecture", "prototype", "algorithm", "model", "system"]);
+  const hasInnovation = contains(combined, ["novel", "innovative", "unique", "state of the art", "cutting edge"]);
+  const hasTeam = contains(combined, ["team", "pi", "principal investigator", "engineer", "scientist", "experience", "expertise"]);
+
+  const commercializationScore = scoreFromSignals(hasCommercial, hasBusinessPlan, hasPrivateInterest, hasTransition);
+  const defenseNeedScore = scoreFromSignals(hasDefenseNeed, hasUrgency, hasBreadth, hasUseCase);
+  const technicalMeritScore = scoreFromSignals(hasUseCase, hasTechnicalApproach, hasMetrics, hasRisk, hasInnovation || hasTeam);
+  const rubricScores = [
+    rubricScore(
+      "commercialization",
+      commercializationScore,
+      "Mock DAF/AFWERX Commercialization rating based on market/revenue, business-plan, defense/private interest, and transition evidence in the draft.",
+      [
+        hasCommercial
+          ? "Includes market or revenue evidence relevant to Market and Revenue Potential."
+          : "Commercialization can be improved by adding market and revenue evidence.",
+        hasPrivateInterest
+          ? "Shows defense, investor, non-government revenue, pilot, or partner interest."
+          : "Defense/private interest evidence is limited or absent.",
+      ],
+      [
+        hasBusinessPlan
+          ? "Business-plan logic is present but should be made more evaluator-verifiable."
+          : "Business Plan score is limited without a clear path to revenue capture and commercial viability.",
+        hasTransition
+          ? "Transition language should still specify funding source, customer, and next milestone."
+          : "Transition strategy is not strong enough for higher Commercialization confidence.",
+      ],
+    ),
+    rubricScore(
+      "defenseNeed",
+      defenseNeedScore,
+      "Mock DAF/AFWERX Defense Need rating based on mission impact, urgency, breadth of applicability, and specificity of the defense use case.",
+      [
+        hasDefenseNeed
+          ? "Addresses a defense mission or capability-gap need."
+          : "Defense Need can be improved by naming the operational need and capability gap.",
+        hasUseCase ? "Includes an end-user or use-case signal." : "Use case evidence is thin.",
+      ],
+      [
+        hasUrgency
+          ? "Urgency is present; quantify the operational consequence to strengthen the rating."
+          : "Level of Mission Impact and Urgency is limited without immediate or critical need evidence.",
+        hasBreadth
+          ? "Breadth language is present but should clarify units, platforms, bases, or commands affected."
+          : "Breadth of Applicability is limited without evidence beyond a single narrow use.",
+      ],
+    ),
+    rubricScore(
+      "technicalMerit",
+      technicalMeritScore,
+      "Mock DAF/AFWERX Technical Merit rating based on problem/use-case framing, approach soundness, risk, innovation, and team evidence.",
+      [
+        hasTechnicalApproach
+          ? "Technical approach evidence is present."
+          : "Technical Merit can be improved by adding a sound, logical technical approach.",
+        hasMetrics ? "Includes metrics, thresholds, tests, or success criteria." : "Measurable validation evidence is thin.",
+      ],
+      [
+        hasRisk ? "Risk evidence is present; tie mitigations to specific tasks and residual risks." : "Level of Risk score is limited without identified risks and mitigation plans.",
+        hasTeam ? "Team qualifications are referenced; map expertise to execution roles." : "Team Qualifications are not strong enough to support a high Technical Merit rating.",
+      ],
+    ),
+  ];
+  const readinessScore = getDafAfwerxReadinessScore(rubricScores.map((score) => score.score));
+  const costVolumeChecks = [
+    costCheck(
+      DAF_AFWERX_COST_VOLUME_CHECKS[0],
+      contains(combined, ["materials", "equipment", "hardware", "software"]) ? "YES" : hasBudget ? "NO" : "N/A",
+      "Mock assessment of whether materials/equipment are tied to the technical effort.",
+    ),
+    costCheck(
+      DAF_AFWERX_COST_VOLUME_CHECKS[1],
+      contains(combined, ["labor", "personnel", "hours", "level of effort"]) ? "YES" : hasBudget ? "NO" : "N/A",
+      "Mock assessment of personnel, labor mix, and hours.",
+    ),
+    costCheck(
+      DAF_AFWERX_COST_VOLUME_CHECKS[2],
+      contains(combined, ["testing", "analysis", "machining", "milling", "lease"]) ? "YES" : "N/A",
+      "Mock assessment of specialized technical efforts.",
+    ),
+    costCheck(
+      DAF_AFWERX_COST_VOLUME_CHECKS[3],
+      contains(combined, ["travel", "site visit", "customer visit"]) ? "YES" : "N/A",
+      "Mock assessment of travel relevance.",
+    ),
+    costCheck(
+      DAF_AFWERX_COST_VOLUME_CHECKS[4],
+      contains(combined, ["subcontract", "consultant", "advisor"]) ? "YES" : "N/A",
+      "Mock assessment of subcontractor or consultant appropriateness.",
+    ),
+  ];
 
   return {
     generatedAt: new Date().toISOString(),
-    readinessScore: Math.min(score, 94),
+    readinessScore,
     confidenceNote:
-      "Mock evaluation based on text completeness and common SBIR/STTR review criteria. Replace with a server-side AI endpoint before production use.",
+      "Mock evaluation using the DAF/AFWERX 2024 MTE rubric: equal-weighted Commercialization, Defense Need, and Technical Merit ratings. Replace with the server-side AI endpoint before production use.",
+    rubricScores,
+    costVolumeChecks,
     strengths: [
       `${project.name} presents a focused starting point around ${sentence(
         proposalText,
         "the proposed technical effort",
       )}.`,
       hasMetrics
-        ? "The draft includes measurable language that can support a stronger technical merit argument."
-        : "The draft has room to add measurable success criteria, which is a straightforward improvement path.",
+        ? "The draft includes measurable language that can support the DAF/AFWERX Technical Merit rating."
+        : "The draft can raise Technical Merit by adding tests, thresholds, and success criteria.",
       solicitationText.length > 500
-        ? "The solicitation text is substantial enough to support compliance mapping."
-        : "The project workflow is ready to accept a fuller solicitation for tighter compliance review.",
+        ? "The solicitation text is substantial enough to map proposal claims against DAF/AFWERX criteria."
+        : "The project workflow is ready to accept fuller topic instructions for tighter DAF/AFWERX review.",
     ],
     weaknesses: [
       hasTransition
-        ? "The transition story is present but should be tied to named stakeholders, acquisition pathways, and post-award milestones."
-        : "The transition story is thin and needs a clearer path from prototype to DoD use.",
+        ? "Transition story is present but needs stronger customer, funding, and milestone evidence for Commercialization."
+        : "Commercialization is score-limited without a clear transition strategy, customer interest, or funding path.",
       hasCommercial
-        ? "The commercialization section should quantify market size, buyer urgency, and pricing assumptions."
-        : "Commercialization language is missing or underdeveloped for a competitive SBIR/STTR package.",
-      "The technical narrative should make reviewer-facing claims easier to verify with tests, milestones, and acceptance criteria.",
+        ? "Commercialization should quantify market size, revenue potential, buyer urgency, and commercial viability."
+        : "Market and Revenue Potential and Business Plan evidence are missing or underdeveloped.",
+      "Technical Merit claims should be easier to verify with objectives, tests, relevant details, risks, and mitigations.",
     ],
     complianceGaps: [
-      "Create a requirement-by-requirement compliance matrix against the solicitation and topic language.",
+      "Create a requirement-by-requirement map against the topic language and DAF/AFWERX rubric criteria.",
       hasBudget
-        ? "Tie budget line items to work plan tasks and expected technical outputs."
-        : "Add a budget narrative that explains labor, materials, subcontractors, and cost realism.",
-      "Confirm page limits, formatting rules, required attachments, data rights assertions, and commercialization plan requirements.",
+        ? "Tie budget line items to the proposed technical effort for the Cost Volume checks."
+        : "Add cost-volume evidence for labor, materials/equipment, specialized efforts, travel, and subcontractors where applicable.",
+      "Confirm required attachments, CM/supporting documents for Phase II, signatures, milestones, and formatting rules.",
     ],
     technicalMerit: [
-      "State the technical hypothesis in one concise paragraph before describing the architecture or method.",
-      "Define baseline performance, target performance, and the test method reviewers can use to judge feasibility.",
-      "Make the innovation defensible against current alternatives, not just internally novel.",
+      "Make the problem and end-user use cases clear before describing the technical approach.",
+      "Define baseline performance, target performance, and the test method evaluators can use to judge approach soundness.",
+      "Make innovation defensible against the current state of the art and similar solutions.",
     ],
     commercialization: [
       hasCommercial
-        ? "Convert market claims into an adoption model with buyer type, procurement trigger, and expected revenue path."
-        : "Add target markets, use cases, buyer personas, competitive alternatives, and a first revenue strategy.",
-      "Describe partnerships, pilots, licensing, manufacturing, or services needed after the SBIR/STTR period.",
+        ? "Convert market claims into a business plan with revenue capture, commercial viability, and buyer type."
+        : "Add market opportunity, revenue potential, customer segment, and commercial viability evidence.",
+      "Describe defense customer interest, available funding, investor interest, non-government revenue, pilots, or partner traction.",
     ],
     transitionPotential: [
       hasTransition
-        ? "Name the DoD transition owner, operational environment, and likely program insertion point."
-        : "Identify a DoD customer, mission owner, operational pain point, and transition milestone.",
-      "Connect the Phase I/II work plan to TRL advancement and acquisition relevance.",
+        ? "Name the DAF customer, operational environment, available funds, and transition milestone."
+        : "Identify a Defense customer, end user, operational pain point, and transition strategy.",
+      "Connect the work plan to the Defense Need criteria: mission impact, breadth of applicability, use case specificity, and adequacy of effort.",
     ],
     rewriteActions: [
-      "Open the technical volume with the mission need, quantified pain, and why current approaches fall short.",
-      "Turn the work plan into task-level objectives with deliverables, success metrics, and review gates.",
-      "Add a risk table with technical, schedule, budget, regulatory, security, and adoption risks plus mitigations.",
-      "Rewrite commercialization and transition as a single path from prototype evidence to customer adoption.",
-      "Use solicitation language in section headings and evaluator-facing claims where appropriate.",
+      "Open with Defense Need: immediate operational need, capability gap, mission impact, and specific end-user use case.",
+      "Turn the technical approach into objectives, relevant details, tests, deliverables, risks, mitigations, and review gates.",
+      "Rewrite commercialization around market/revenue potential, business plan, defense/private interest, and transition strategy.",
+      "Add cost-volume justification that maps labor, materials/equipment, specialized efforts, travel, and subcontractors to the technical effort.",
+      "Use DAF/AFWERX rubric language in reviewer-facing claims where it accurately matches the evidence.",
     ],
   };
 };
@@ -186,60 +312,110 @@ export const generateMockDraftSections = async (input: DraftSectionsInput): Prom
 
 const sectionSuggestionFallbacks: Record<VolumeSectionKey, string[]> = {
   problemNeed: [
-    "Quantify the mission pain with a baseline, affected user, and current operational consequence.",
-    "Make the urgency explicit so reviewers know why this problem matters now.",
-    "Tie the need back to solicitation language or a named customer requirement.",
+    "Does not clearly map to DAF/AFWERX Defense Need: mission impact, urgency, and defense capability gap are not evaluator-obvious.",
+    "Lacks a specific end-user use case with clear operational application and adequacy of effort.",
+    "Breadth of Applicability is weak unless the draft shows affected units, platforms, bases, MAJCOMs, or Field Commands.",
   ],
   technicalApproach: [
-    "State the technical hypothesis before describing components or activities.",
-    "Add measurable success criteria, test methods, and baseline comparison points.",
-    "Clarify which tasks will generate evidence that feasibility has been proven.",
+    "Fails to demonstrate Technical Approach Soundness and Merit with a logical method tied to stated objectives.",
+    "Lacks relevant technical details, tests, thresholds, or success criteria that support a higher Technical Merit score.",
+    "Does not make clear how the approach will deliver the stated DAF/AFWERX objectives.",
   ],
   innovation: [
-    "Compare the approach against current alternatives instead of only describing internal novelty.",
-    "Name the defensible technical differentiator and what evidence would prove it.",
-    "Avoid overclaiming maturity; separate what is proven from what Phase I will validate.",
+    "Innovation score is limited because the solution is not compared to the current state of the art or similar companies.",
+    "Does not show whether the technology is brand-new to government or an adaptation of existing government technology.",
+    "Novelty claims need evidence that the solution is unique, original, or cutting edge.",
   ],
   workPlan: [
-    "Break the plan into task-level objectives with owners, deliverables, timing, and decision gates.",
-    "Put the riskiest feasibility questions early in the schedule.",
-    "Connect every deliverable to the evidence needed for Phase II or transition.",
+    "Technical Merit is limited unless tasks show how the approach will deliver stated objectives.",
+    "Milestones should be consistent with any customer memo, transition strategy, and proposed technical effort.",
+    "Risk retirement should be visible in the work plan so evaluators can judge whether residual risk is acceptable.",
   ],
   team: [
-    "Map each contributor to the technical, commercial, or transition work they own.",
-    "Add qualifications that directly reduce reviewer concern about execution risk.",
-    "Call out missing capabilities and how advisors, partners, or hires will cover them.",
+    "Team Qualifications score is limited unless relevant experience, expertise, facilities, and equipment are tied to the work.",
+    "Does not demonstrate the team's ability to perform R&D and execute the proposed approach.",
+    "Uncovered capabilities need an advisor, partner, subcontractor, facility, or hiring plan instead of an implicit gap.",
   ],
   commercializationTransition: [
-    "Identify the first customer segment, use case, buyer, and procurement trigger.",
-    "Connect Phase I/II evidence to a specific transition or adoption milestone.",
-    "Quantify the market or adoption path with realistic pricing, pilots, or partner assumptions.",
+    "Fails to demonstrate Commercialization through market/revenue potential, business plan, and defense/private interest.",
+    "Defense customer interest is score-limited unless the customer, available funds, investor funding, or non-government revenue are clear.",
+    "Transition strategy needs enough specificity to support the Phase II CM/supporting-document criteria when applicable.",
   ],
   risks: [
-    "List specific technical, schedule, budget, regulatory, security, and adoption risks.",
-    "Pair each risk with likelihood, impact, mitigation, and fallback evidence.",
-    "Tie risk retirement to work plan tasks rather than keeping it generic.",
+    "Level of Risk score is limited unless major risks are identified and mitigated.",
+    "Residual risks should be framed as acceptable for an SBIR/STTR R&D effort, or explicitly reduced by mitigation evidence.",
+    "Risk mitigation should tie to work plan tasks, tests, and decision gates.",
   ],
   budgetNarrative: [
-    "Connect labor and non-labor costs to work plan tasks and deliverables.",
-    "Explain why materials, travel, software, and subcontractors are necessary.",
-    "Use the narrative to show cost realism, not just cost categories.",
+    "Cost Volume logic is weak unless materials/equipment are appropriate for the proposed technical effort.",
+    "Personnel, labor skill mix, and hours need to map to the proposed technical effort.",
+    "Travel, specialized efforts, subcontractors, and consultants need clear relevance or should be marked not applicable.",
   ],
+};
+
+const signalRiskFindings: Record<string, string> = {
+  "named user or mission owner": "Defense Need is score-limited because the end user, customer, or mission owner is not clear.",
+  "clear problem gap": "Problem framing does not yet establish the defense capability gap or operational consequence.",
+  urgency: "Level of Mission Impact and Urgency is weak without immediate or critical need evidence.",
+  "technical method": "Technical Approach Soundness and Merit is limited because the method or architecture is not clear.",
+  "validation plan": "Technical Merit is limited without tests, data sources, objectives, and pass/fail criteria.",
+  "measurable criteria": "Lacks measurable objectives needed to judge whether the approach can deliver stated results.",
+  "novelty claim": "Innovation score is limited because novelty compared with current state of the art is not explicit.",
+  "comparison to alternatives": "Innovation score is limited without comparison to similar solutions or existing government technology.",
+  defensibility: "Innovation evidence is not strong enough to show a unique or original advantage.",
+  "task structure": "Technical approach is harder to score because tasks and objectives are not structured.",
+  deliverables: "Evaluator cannot see the concrete outputs that will prove technical progress.",
+  "timing or decision gates": "Milestone consistency and risk retirement are weak without timing or decision gates.",
+  "named roles": "Team Qualifications are score-limited because execution roles are not named.",
+  "relevant qualifications": "Team Qualifications need experience, expertise, facilities, or equipment tied to the proposed approach.",
+  "ownership mapping": "Evaluator cannot see who owns technical execution, commercialization, transition, or customer engagement.",
+  "target customer or market": "Commercialization score is limited because market, customer, or revenue target is vague.",
+  "transition path": "Commercialization and Defense Need are limited without a clear transition strategy or customer funding path.",
+  "commercial adoption path": "Commercialization lacks investor funding, non-government revenue, pilot, partner, or revenue evidence.",
+  "specific risks": "Level of Risk is hard to score because major risks are not identified.",
+  mitigations: "Level of Risk is limited because mitigation plans are missing or generic.",
+  "fallback or impact": "Residual risk is hard to judge without impact, likelihood, fallback, or mitigation evidence.",
+  "labor basis": "Cost Volume check is limited because personnel, skill mix, and hours are not visible.",
+  "cost categories": "Cost Volume check is limited because materials, equipment, travel, or subcontractors are not justified.",
+  "cost-to-work link": "Cost Volume check is limited because costs are not mapped to the proposed technical effort.",
+};
+
+const clampScore = (value: number) => Math.min(100, Math.max(0, Math.round(value)));
+
+const scoreEvaluatorSection = (section: VolumeSection, completenessScore: number) => {
+  const content = section.content.trim();
+  if (!content) return 0;
+
+  const reviewerSignals = [
+    { pattern: /\b(solicitation|topic|requirement|criterion|criteria)\b/i, points: 12 },
+    { pattern: /\b(dod|warfighter|mission|program office|acquisition|transition)\b/i, points: 15 },
+    { pattern: /\b\d+(?:\.\d+)?%?\b|metric|threshold|baseline|kpi|trl|performance\b/i, points: 16 },
+    { pattern: /\b(test|validate|evidence|demonstrate|deliverable|milestone)\b/i, points: 14 },
+    { pattern: /\b(customer|buyer|user|stakeholder|partner|pilot)\b/i, points: 11 },
+    { pattern: /\b(risk|mitigation|fallback|assumption)\b/i, points: 10 },
+  ];
+
+  const signalScore = reviewerSignals.reduce((total, signal) => total + (signal.pattern.test(content) ? signal.points : 0), 0);
+
+  return clampScore(10 + Math.min(32, completenessScore * 0.32) + signalScore);
 };
 
 const mockSuggestionForSection = (section: VolumeSection) => {
   const strength = analyzeSectionStrength(section);
-  const missingSignalSuggestions = strength.missingSignals.map((signal) => `Add ${signal} to strengthen this section.`);
+  const evaluatorScore = scoreEvaluatorSection(section, strength.score);
+  const missingSignalSuggestions = strength.missingSignals.map(
+    (signal) => signalRiskFindings[signal] ?? `Reviewer cannot verify ${signal}; tie it to criteria, evidence, and metrics.`,
+  );
   const suggestions = [...missingSignalSuggestions, ...sectionSuggestionFallbacks[section.key]].slice(0, 4);
 
   return {
     key: section.key,
     title: section.title,
-    strengthScore: strength.score,
+    evaluatorScore,
     summary:
-      strength.score >= 75
-        ? "This section has a solid base; the next gains come from sharper evidence and reviewer-facing specificity."
-        : "This section needs more concrete reviewer evidence before it will feel competitive.",
+      evaluatorScore >= 75
+        ? "Evaluator confidence is forming; the remaining gains come from sharper criteria mapping and verifiable evidence."
+        : "Evaluator confidence is limited because the draft does not yet prove fit, feasibility, transition, or measurable impact.",
     suggestions,
   };
 };

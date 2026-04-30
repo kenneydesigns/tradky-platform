@@ -12,14 +12,20 @@ type VolumeBuilderProps = {
 
 const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
 
-const strengthTone = (score: number) => {
+const scoreTone = (score: number) => {
   if (score >= 82) return "strong";
   if (score >= 62) return "solid";
   if (score >= 38) return "developing";
   return "weak";
 };
 
-const createStrengthMap = (sections: VolumeSection[]) =>
+const evaluatorScoreLabel = (score: number) => {
+  if (score >= 85) return "Strong evaluator confidence";
+  if (score >= 70) return "Developing evaluator confidence";
+  return "Low evaluator confidence";
+};
+
+const createCompletenessMap = (sections: VolumeSection[]) =>
   sections.reduce(
     (map, section) => ({
       ...map,
@@ -42,10 +48,9 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
     () => project.sections.reduce((sum, section) => sum + countWords(section.content), 0),
     [project.sections],
   );
-  const sectionStrengths = useMemo(() => createStrengthMap(project.sections), [project.sections]);
-  const activeStrength = sectionStrengths[activeSection.key];
-  const displayStrengthScore = activeSuggestion?.strengthScore ?? activeStrength.score;
-  const displayStrengthLabel = activeSuggestion ? "AI reviewed" : activeStrength.label;
+  const sectionCompleteness = useMemo(() => createCompletenessMap(project.sections), [project.sections]);
+  const evaluatorScore = activeSuggestion?.evaluatorScore;
+  const displayEvaluatorScore = evaluatorScore ?? 0;
   const emptySectionKeys = useMemo(
     () => project.sections.filter((section) => !section.content.trim()).map((section) => section.key),
     [project.sections],
@@ -155,7 +160,7 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
           </button>
           <button className="button" type="button" disabled={suggestingTarget !== null} onClick={refreshAllSuggestions}>
             <Lightbulb size={17} />
-            {suggestingTarget === "all" ? "Reviewing..." : "AI Suggestions"}
+            {suggestingTarget === "all" ? "Reviewing..." : "Evaluator Suggestions"}
           </button>
           <button className="button" type="button" onClick={() => exportMarkdown(project)}>
             <Download size={17} />
@@ -173,8 +178,12 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
 
       <div className="builder-layout">
         <nav className="section-nav" aria-label="Technical volume sections">
+          <div className="section-nav-heading">
+            <span>Completeness</span>
+            <small>Draft coverage, not evaluator score</small>
+          </div>
           {project.sections.map((section) => {
-            const strength = sectionStrengths[section.key];
+            const completeness = sectionCompleteness[section.key];
 
             return (
               <button
@@ -187,11 +196,11 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
                   <span>{section.title}</span>
                   <small>{countWords(section.content)} words</small>
                 </div>
-                <div className="strength-meter" aria-label={`${section.title} strength ${strength.score}%`}>
-                  <span className={strengthTone(strength.score)} style={{ width: `${strength.score}%` }} />
+                <div className="strength-meter" aria-label={`${section.title} completeness ${completeness.score}%`}>
+                  <span className={scoreTone(completeness.score)} style={{ width: `${completeness.score}%` }} />
                 </div>
                 <small className="strength-caption">
-                  {strength.label} • {strength.score}%
+                  Completeness: {completeness.label} • {completeness.score}%
                 </small>
               </button>
             );
@@ -213,7 +222,7 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
                 onClick={refreshActiveSuggestions}
               >
                 <Lightbulb size={16} />
-                {suggestingTarget === activeSection.key ? "Reviewing..." : "AI Suggestions"}
+                {suggestingTarget === activeSection.key ? "Reviewing..." : "Evaluator Suggestions"}
               </button>
               <button className="button compact" type="button" disabled={draftingTarget !== null} onClick={draftActiveSection}>
                 <WandSparkles size={16} />
@@ -222,23 +231,23 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
             </div>
           </header>
           <div className="section-insights">
-            <section className="strength-insight" aria-label={`${activeSection.title} strength meter`}>
+            <section className="strength-insight" aria-label={`${activeSection.title} evaluator score`}>
               <div className="insight-heading">
                 <Gauge size={17} />
-                <span>Strength</span>
-                <strong>{displayStrengthScore}%</strong>
+                <span>Evaluator Score</span>
+                <strong>{evaluatorScore === undefined ? "Not run" : `${evaluatorScore}%`}</strong>
               </div>
               <div className="strength-meter large">
-                <span className={strengthTone(displayStrengthScore)} style={{ width: `${displayStrengthScore}%` }} />
+                <span className={scoreTone(displayEvaluatorScore)} style={{ width: `${displayEvaluatorScore}%` }} />
               </div>
-              <p>{displayStrengthLabel}</p>
-              <small>{activeStrength.details.join(" • ")}</small>
+              <p>{evaluatorScore === undefined ? "Not reviewed" : evaluatorScoreLabel(evaluatorScore)}</p>
+              <small>Separate from completeness; based on solicitation fit, evidence, metrics, transition, and risk.</small>
             </section>
 
-            <section className="ai-suggestions" aria-label={`${activeSection.title} AI suggestions`}>
+            <section className="ai-suggestions" aria-label={`${activeSection.title} evaluator suggestions`}>
               <div className="insight-heading">
                 <Lightbulb size={17} />
-                <span>AI Suggestions</span>
+                <span>Evaluator Suggestions</span>
               </div>
               {activeSuggestion ? (
                 <>
@@ -250,7 +259,7 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
                   </ul>
                 </>
               ) : (
-                <p>Run AI suggestions to get section-specific coaching for this draft.</p>
+                <p>Run evaluator suggestions to get SBIR reviewer findings for this draft.</p>
               )}
             </section>
           </div>

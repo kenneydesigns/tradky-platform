@@ -568,7 +568,7 @@ select:focus {
 
 .score-band {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 18px;
   margin-bottom: 16px;
@@ -578,6 +578,135 @@ select:focus {
 .score-band h2 {
   margin: 0;
   font-size: 3rem;
+}
+
+.evaluation-report-button {
+  white-space: nowrap;
+}
+
+.evaluation-report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.rubric-panel,
+.cost-volume-panel {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 16px;
+}
+
+.rubric-panel > header,
+.cost-volume-panel > header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rubric-panel h3,
+.cost-volume-panel h3,
+.rubric-card h4 {
+  margin: 0;
+}
+
+.rubric-panel header svg,
+.cost-volume-panel header svg {
+  color: var(--accent);
+}
+
+.rubric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.rubric-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.rubric-card-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rubric-card-heading span {
+  color: var(--accent-dark);
+  font-size: 0.8rem;
+  font-weight: 850;
+}
+
+.rubric-card-heading strong {
+  flex: 0 0 auto;
+  font-size: 1.4rem;
+}
+
+.rubric-card p,
+.cost-volume-panel p,
+.cost-volume-panel small {
+  margin: 0;
+  color: var(--muted);
+}
+
+.rubric-card ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding-left: 18px;
+  color: #34413c;
+  line-height: 1.4;
+}
+
+.cost-volume-panel > div {
+  display: grid;
+  gap: 8px;
+}
+
+.cost-volume-panel article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px 10px;
+  align-items: start;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.cost-volume-panel small {
+  grid-column: 2;
+}
+
+.cost-status {
+  display: inline-grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.cost-status.no {
+  background: #f9e5e5;
+  color: var(--red);
+}
+
+.cost-status.n-a {
+  background: #edf0ec;
+  color: var(--muted);
 }
 
 .evaluation-grid {
@@ -641,6 +770,23 @@ select:focus {
   align-content: start;
   gap: 6px;
   padding: 10px;
+}
+
+.section-nav-heading {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 4px;
+  padding: 4px 2px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.section-nav-heading span {
+  font-weight: 850;
+}
+
+.section-nav-heading small {
+  color: var(--muted);
+  line-height: 1.25;
 }
 
 .section-nav button {
@@ -757,6 +903,8 @@ select:focus {
 .insight-heading strong {
   margin-left: auto;
   font-size: 1.15rem;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .strength-meter.large {
@@ -876,6 +1024,7 @@ select {
 
   .input-grid,
   .evaluation-grid,
+  .rubric-grid,
   .builder-layout,
   .section-insights {
     grid-template-columns: 1fr;
@@ -914,12 +1063,14 @@ select {
   }
 
   .toolbar-actions,
+  .evaluation-report-actions,
   .section-editor-actions,
   .modal-actions {
     justify-content: stretch;
   }
 
   .toolbar-actions .button,
+  .evaluation-report-actions .button,
   .section-editor-actions .button,
   .modal-actions .button,
   .page-header .button,

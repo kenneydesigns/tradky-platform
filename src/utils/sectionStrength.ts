@@ -66,10 +66,10 @@ const clamp = (value: number) => Math.min(100, Math.max(0, Math.round(value)));
 const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
 
 const scoreLabel = (score: number) => {
-  if (score >= 82) return "Strong";
-  if (score >= 62) return "Solid";
-  if (score >= 38) return "Developing";
-  return "Needs work";
+  if (score >= 82) return "Complete";
+  if (score >= 62) return "Mostly complete";
+  if (score >= 38) return "Partial";
+  return "Sparse";
 };
 
 export const analyzeSectionStrength = (section: VolumeSection): SectionStrength => {

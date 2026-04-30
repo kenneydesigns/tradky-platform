@@ -1,3 +1,5 @@
+import type { DafAfwerxRubricCategoryKey } from "./data/dafAfwerxRubric";
+
 export type VolumeSectionKey =
   | "problemNeed"
   | "technicalApproach"
@@ -14,10 +16,28 @@ export type VolumeSection = {
   content: string;
 };
 
+export type DafAfwerxRubricScore = {
+  key: DafAfwerxRubricCategoryKey;
+  title: string;
+  score: number;
+  label: string;
+  rationale: string;
+  strengths: string[];
+  gaps: string[];
+};
+
+export type CostVolumeCheck = {
+  question: string;
+  status: "YES" | "NO" | "N/A";
+  rationale: string;
+};
+
 export type EvaluationResult = {
   generatedAt: string;
   readinessScore: number;
   confidenceNote: string;
+  rubricScores?: DafAfwerxRubricScore[];
+  costVolumeChecks?: CostVolumeCheck[];
   strengths: string[];
   weaknesses: string[];
   complianceGaps: string[];
@@ -64,7 +84,7 @@ export type DraftSectionsResult = {
 export type SectionSuggestion = {
   key: VolumeSectionKey;
   title: string;
-  strengthScore: number;
+  evaluatorScore: number;
   summary: string;
   suggestions: string[];
 };

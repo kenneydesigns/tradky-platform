@@ -1,7 +1,9 @@
-import { AlertTriangle, CheckCircle2, CircleDot, Sparkles } from "lucide-react";
-import { EvaluationResult } from "../types";
+import { AlertTriangle, CheckCircle2, CircleDot, Download, FileDown, ListChecks, Sparkles } from "lucide-react";
+import { EvaluationResult, Project } from "../types";
+import { exportEvaluationReportDocx, exportEvaluationReportPdf } from "../utils/exporters";
 
 type EvaluationPanelProps = {
+  project: Project;
   evaluation: EvaluationResult | null;
 };
 
@@ -20,20 +22,22 @@ const categoryData: Array<{
 }> = [
   { key: "strengths", title: "Strengths" },
   { key: "weaknesses", title: "Weaknesses" },
-  { key: "complianceGaps", title: "Compliance Gaps" },
-  { key: "technicalMerit", title: "Technical Merit Feedback" },
-  { key: "commercialization", title: "Commercialization Feedback" },
-  { key: "transitionPotential", title: "DoD Transition Potential" },
-  { key: "rewriteActions", title: "Recommended Rewrite Actions" },
+  { key: "complianceGaps", title: "DAF/AFWERX Compliance Gaps" },
+  { key: "technicalMerit", title: "Technical Merit Rubric Feedback" },
+  { key: "commercialization", title: "Commercialization Rubric Feedback" },
+  { key: "transitionPotential", title: "Defense Need / Transition Fit" },
+  { key: "rewriteActions", title: "Score-Lifting Rewrite Actions" },
 ];
 
 const scoreLabel = (score: number) => {
-  if (score >= 85) return "Strong";
-  if (score >= 70) return "Developing";
-  return "Needs work";
+  if (score >= 90) return "Excellent";
+  if (score >= 70) return "Good";
+  if (score >= 50) return "Acceptable";
+  if (score >= 30) return "Marginal";
+  return "Poor";
 };
 
-export const EvaluationPanel = ({ evaluation }: EvaluationPanelProps) => {
+export const EvaluationPanel = ({ project, evaluation }: EvaluationPanelProps) => {
   if (!evaluation) {
     return (
       <div className="empty-state evaluation-empty">
@@ -48,12 +52,71 @@ export const EvaluationPanel = ({ evaluation }: EvaluationPanelProps) => {
     <div className="evaluation-panel">
       <section className="score-band">
         <div>
-          <p className="eyebrow">Readiness score</p>
+          <p className="eyebrow">DAF/AFWERX rubric score</p>
           <h2>{evaluation.readinessScore}</h2>
         </div>
         <span className="score-label">{scoreLabel(evaluation.readinessScore)}</span>
         <p>{evaluation.confidenceNote}</p>
+        <div className="evaluation-report-actions">
+          <button className="button evaluation-report-button" type="button" onClick={() => void exportEvaluationReportPdf(project)}>
+            <Download size={17} />
+            PDF Report
+          </button>
+          <button className="button primary evaluation-report-button" type="button" onClick={() => void exportEvaluationReportDocx(project)}>
+            <FileDown size={17} />
+            DOCX Report
+          </button>
+        </div>
       </section>
+
+      {evaluation.rubricScores?.length ? (
+        <section className="rubric-panel" aria-label="DAF/AFWERX rubric rankings">
+          <header>
+            <ListChecks size={18} />
+            <div>
+              <p className="eyebrow">Evaluator rankings</p>
+              <h3>DAF/AFWERX 1-5 scoring logic</h3>
+            </div>
+          </header>
+          <div className="rubric-grid">
+            {evaluation.rubricScores.map((rubricScore) => (
+              <article className="rubric-card" key={rubricScore.key}>
+                <div className="rubric-card-heading">
+                  <div>
+                    <h4>{rubricScore.title}</h4>
+                    <span>{rubricScore.label}</span>
+                  </div>
+                  <strong>{rubricScore.score}/5</strong>
+                </div>
+                <p>{rubricScore.rationale}</p>
+                <ul>
+                  {[...rubricScore.strengths.slice(0, 2), ...rubricScore.gaps.slice(0, 2)].map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {evaluation.costVolumeChecks?.length ? (
+        <section className="cost-volume-panel" aria-label="Cost volume checks">
+          <header>
+            <CircleDot size={18} />
+            <h3>Cost Volume Checks</h3>
+          </header>
+          <div>
+            {evaluation.costVolumeChecks.map((check) => (
+              <article key={check.question}>
+                <span className={`cost-status ${check.status.toLowerCase().replace("/", "-")}`}>{check.status}</span>
+                <p>{check.question}</p>
+                <small>{check.rationale}</small>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <div className="evaluation-grid">
         {categoryData.map((category) => {

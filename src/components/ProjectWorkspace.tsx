@@ -111,7 +111,7 @@ export const ProjectWorkspace = ({
         />
       ) : null}
 
-      {activeTab === "evaluation" ? <EvaluationPanel evaluation={project.evaluation} /> : null}
+      {activeTab === "evaluation" ? <EvaluationPanel project={project} evaluation={project.evaluation} /> : null}
 
       {activeTab === "builder" ? <VolumeBuilder project={project} onUpdateProject={onUpdateProject} /> : null}
     </div>

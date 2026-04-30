@@ -3,6 +3,15 @@
   "outputDirectory": "dist",
   "headers": [
     {
+      "source": "/.well-known/openai-apps-challenge",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/plain; charset=utf-8"
+        }
+      ]
+    },
+    {
       "source": "/(.*)",
       "headers": [
         {
@@ -13,6 +22,14 @@
     }
   ],
   "rewrites": [
+    {
+      "source": "/mcp",
+      "destination": "/api/mcp"
+    },
+    {
+      "source": "/mcp/",
+      "destination": "/api/mcp"
+    },
     {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
