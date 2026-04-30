@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Download, FileDown, WandSparkles } from "lucide-react";
 import { Project, VolumeSection, VolumeSectionKey } from "../types";
+import { draftVolumeSections } from "../services/aiClient";
 import { exportDocx, exportMarkdown } from "../utils/exporters";
 
 type VolumeBuilderProps = {
@@ -10,33 +11,18 @@ type VolumeBuilderProps = {
 
 const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
 
-const suggestedSectionContent = (project: Project): Record<VolumeSectionKey, string> => ({
-  problemNeed:
-    "Define the mission or market need in reviewer-facing terms. Quantify the pain, operational gap, current limitation, and why the problem matters now.",
-  technicalApproach:
-    "Describe the technical hypothesis, architecture, methods, experiments, and success criteria. Tie each technical claim to a measurable validation activity.",
-  innovation:
-    "Explain what is novel compared with existing products, research, or internal alternatives. Make the defensibility clear without overstating maturity.",
-  workPlan:
-    "Organize Phase I work into tasks with objectives, deliverables, responsible contributors, timing, and go/no-go criteria.",
-  team:
-    "Map each key person or partner to the technical, commercialization, and transition work they own. Address gaps with advisors, subcontractors, or hiring plans.",
-  commercializationTransition:
-    project.evaluation
-      ? project.evaluation.transitionPotential.join("\n\n")
-      : "Define target customers, first use cases, market entry, DoD transition owner, procurement path, and post-award adoption milestones.",
-  risks:
-    "List technical, schedule, budget, regulatory, security, and adoption risks. Pair each risk with likelihood, impact, mitigation, and fallback evidence.",
-  budgetNarrative:
-    "Explain labor, materials, travel, subcontractors, indirect costs, and how each cost supports the work plan and expected deliverables.",
-});
-
 export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) => {
   const [activeKey, setActiveKey] = useState<VolumeSectionKey>(project.sections[0].key);
+  const [draftingTarget, setDraftingTarget] = useState<"empty" | VolumeSectionKey | null>(null);
+  const [draftError, setDraftError] = useState("");
   const activeSection = project.sections.find((section) => section.key === activeKey) ?? project.sections[0];
 
   const totalWords = useMemo(
     () => project.sections.reduce((sum, section) => sum + countWords(section.content), 0),
+    [project.sections],
+  );
+  const emptySectionKeys = useMemo(
+    () => project.sections.filter((section) => !section.content.trim()).map((section) => section.key),
     [project.sections],
   );
 
@@ -47,15 +33,40 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
     });
   };
 
-  const fillEmptySections = () => {
-    const suggestions = suggestedSectionContent(project);
+  const applySectionDrafts = (draftedSections: VolumeSection[]) => {
+    const draftByKey = new Map(draftedSections.map((section) => [section.key, section.content]));
+
     onUpdateProject({
       ...project,
       sections: project.sections.map((section) => ({
         ...section,
-        content: section.content.trim() ? section.content : suggestions[section.key],
+        content: draftByKey.get(section.key) ?? section.content,
       })),
     });
+  };
+
+  const draftSections = async (sectionKeys: VolumeSectionKey[], target: "empty" | VolumeSectionKey) => {
+    if (!sectionKeys.length) return;
+
+    setDraftingTarget(target);
+    setDraftError("");
+
+    try {
+      const result = await draftVolumeSections({ project, sectionKeys });
+      applySectionDrafts(result.sections);
+    } catch (caught) {
+      setDraftError(caught instanceof Error ? caught.message : "Section drafting failed");
+    } finally {
+      setDraftingTarget(null);
+    }
+  };
+
+  const draftEmptySections = () => {
+    void draftSections(emptySectionKeys, "empty");
+  };
+
+  const draftActiveSection = () => {
+    void draftSections([activeSection.key], activeSection.key);
   };
 
   return (
@@ -66,9 +77,14 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
           <h2>{totalWords} words across 8 sections</h2>
         </div>
         <div className="toolbar-actions">
-          <button className="button" type="button" onClick={fillEmptySections}>
+          <button
+            className="button"
+            type="button"
+            disabled={!emptySectionKeys.length || draftingTarget !== null}
+            onClick={draftEmptySections}
+          >
             <WandSparkles size={17} />
-            Draft Empty Sections
+            {draftingTarget === "empty" ? "Drafting..." : "AI Draft Empty Sections"}
           </button>
           <button className="button" type="button" onClick={() => exportMarkdown(project)}>
             <Download size={17} />
@@ -80,6 +96,8 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
           </button>
         </div>
       </header>
+
+      {draftError ? <div className="error-banner">{draftError}</div> : null}
 
       <div className="builder-layout">
         <nav className="section-nav" aria-label="Technical volume sections">
@@ -102,11 +120,18 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
               <p className="eyebrow">Editable section</p>
               <h2>{activeSection.title}</h2>
             </div>
-            <span>{countWords(activeSection.content)} words</span>
+            <div className="section-editor-actions">
+              <span>{countWords(activeSection.content)} words</span>
+              <button className="button compact" type="button" disabled={draftingTarget !== null} onClick={draftActiveSection}>
+                <WandSparkles size={16} />
+                {draftingTarget === activeSection.key ? "Drafting..." : "AI Draft This Section"}
+              </button>
+            </div>
           </header>
           <textarea
             value={activeSection.content}
             onChange={(event) => updateSection(activeSection, event.target.value)}
+            disabled={draftingTarget === activeSection.key}
             placeholder={`Draft the ${activeSection.title.toLowerCase()} section.`}
           />
         </section>

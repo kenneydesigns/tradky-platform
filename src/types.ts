@@ -50,3 +50,13 @@ export type EvaluateInput = {
   solicitationText: string;
   proposalText: string;
 };
+
+export type DraftSectionsInput = {
+  project: Project;
+  sectionKeys?: VolumeSectionKey[];
+};
+
+export type DraftSectionsResult = {
+  generatedAt: string;
+  sections: VolumeSection[];
+};

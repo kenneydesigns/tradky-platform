@@ -9,7 +9,7 @@ Standalone React app for evaluating SBIR/STTR proposal drafts and developing tec
 - Paste or upload solicitation/topic text
 - Paste or upload draft proposal/technical volume text
 - OpenAI-backed evaluation covering strengths, weaknesses, compliance gaps, technical merit, commercialization, DoD transition potential, and rewrite actions
-- Editable technical volume builder with eight proposal sections
+- Editable technical volume builder with AI-assisted drafts for all empty sections or the active section
 - Export technical volume draft to Markdown or DOCX
 - Browser localStorage persistence for MVP project data
 
@@ -33,12 +33,13 @@ Copy `.env.example` to `.env.local` for local configuration.
 ```bash
 VITE_AI_MODE=mock
 VITE_AI_ENDPOINT=/api/evaluate
+VITE_AI_DRAFT_ENDPOINT=/api/draft-sections
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5.4-mini
 OPENAI_REASONING_EFFORT=low
 ```
 
-Keep provider API keys server-side only. Do not expose private keys with a `VITE_` prefix. The current UI calls `src/services/aiClient.ts`, which defaults to `/api/evaluate` in production and mock responses in local dev unless `VITE_AI_MODE` is set.
+Keep provider API keys server-side only. Do not expose private keys with a `VITE_` prefix. The current UI calls `src/services/aiClient.ts`, which defaults to `/api/evaluate` and `/api/draft-sections` in production and mock responses in local dev unless `VITE_AI_MODE` is set.
 
 See `docs/openai-api-setup.md` for OpenAI credits, API key, and Vercel environment variable setup.
 

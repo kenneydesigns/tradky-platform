@@ -674,6 +674,14 @@ select:focus {
   padding: 16px;
 }
 
+.section-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .section-editor textarea {
   min-height: 500px;
   padding: 16px;
@@ -808,11 +816,13 @@ select {
   }
 
   .toolbar-actions,
+  .section-editor-actions,
   .modal-actions {
     justify-content: stretch;
   }
 
   .toolbar-actions .button,
+  .section-editor-actions .button,
   .modal-actions .button,
   .page-header .button,
   .action-strip .button {
