@@ -464,7 +464,7 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
       {draftError ? <div className="error-banner">{draftError}</div> : null}
       {suggestionError ? <div className="error-banner">{suggestionError}</div> : null}
 
-      <details className="builder-panel solicitation-panel" open>
+      <details className="builder-panel solicitation-panel">
         <summary>
           <span>
             <SlidersHorizontal size={18} />
@@ -632,7 +632,7 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
       </details>
 
       <div className="builder-panel-grid">
-        <details className="builder-panel compliance-panel" open>
+        <details className="builder-panel compliance-panel">
           <summary>
             <span>
               <ShieldCheck size={18} />
@@ -663,7 +663,7 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
           </div>
         </details>
 
-        <details className="builder-panel scoring-panel" open>
+        <details className="builder-panel scoring-panel">
           <summary>
             <span>
               <Gauge size={18} />

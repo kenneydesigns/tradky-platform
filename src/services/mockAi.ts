@@ -237,6 +237,23 @@ export const generateMockEvaluation = async ({
 
 const sourceSentence = (value: string, fallback: string) => sentence(value, fallback).replace(/\.$/, "");
 
+const contextSummaryForSection = (project: Project, targetKey: VolumeSectionKey) => {
+  const filledSections = project.sections
+    .filter((section) => section.key !== targetKey && section.content.trim())
+    .map((section) => `${section.title}: ${section.content}`)
+    .join(" ");
+
+  return sourceSentence(
+    filledSections || [project.proposalText, project.solicitationText, project.customSolicitationInstructions].filter(Boolean).join(" "),
+    "the current concept notes, solicitation context, and technical direction",
+  );
+};
+
+const contextualAnchor = (project: Project, sectionKey: VolumeSectionKey) => {
+  const purpose = getSectionPurpose(sectionKey).replace(/\.$/, "").toLowerCase();
+  return `The surrounding volume frames ${project.name} around ${contextSummaryForSection(project, sectionKey)}; this section should use that context to ${purpose}.`;
+};
+
 const sectionDrafts = ({
   project,
 }: DraftSectionsInput): Record<VolumeSectionKey, string> => {
@@ -266,91 +283,109 @@ const sectionDrafts = ({
   return {
     problemNeed: [
       `The proposed ${project.phase} effort addresses a ${profile.label} need reflected in ${problemSource}.`,
+      contextualAnchor(project, "problemNeed"),
       `Based on the current proposal context, ${existingSectionContext}, the problem statement should make the affected end user, operational or public-benefit consequence, and current performance shortfall visible before the solution is introduced.`,
       `To support evaluator scoring, this section should quantify the gap with baseline conditions, target improvement, urgency, and the reason this effort fits the selected solicitation profile.`,
     ].join("\n\n"),
     objectivesSpecificAims: [
       `The ${project.phase} objectives should translate ${problemSource} into a small set of testable aims.`,
+      contextualAnchor(project, "objectivesSpecificAims"),
       `Each aim should state what will be validated, why it matters for ${profile.label}, what evidence will be produced, and how success will be judged.`,
       `A strong version uses measurable language rather than broad intent: aim, method, expected result, and decision criterion.`,
     ].join("\n\n"),
     technicalApproach: [
       `The technical approach turns ${proposalSource} into a testable development path that fits ${profile.label}.`,
+      contextualAnchor(project, "technicalApproach"),
       `The work should define the system architecture, key technical assumptions, and validation method, then tie those choices to measurable thresholds rather than general feasibility language.`,
       `Evaluator confidence will improve if the section makes ${technicalActions} explicit and connects each claim to the evidence the team will collect during ${project.phase}.`,
     ].join("\n\n"),
     innovation: [
       `The innovation is the combination of method, implementation, and profile fit that improves on incumbent alternatives for this ${project.agency} use case.`,
+      contextualAnchor(project, "innovation"),
       `Rather than presenting novelty as a general claim, this section should compare the proposed approach against current products, research baselines, internal workarounds, and the constraints in the pasted solicitation instructions.`,
       `The strongest version will explain what is technically differentiated, why it is defensible, and what evidence would prove that differentiation during the award period.`,
     ].join("\n\n"),
     workPlan: [
       `The ${project.phase} work plan should be organized around tasks that retire the highest feasibility risks first.`,
+      contextualAnchor(project, "workPlan"),
       `Task 1 should refine requirements and success criteria; Task 2 should build or integrate the prototype elements; Task 3 should run validation experiments and analyze results; Task 4 should prepare the transition and Phase II evidence package.`,
       `Each task needs objectives, deliverables, responsible contributors, timing, and go/no-go criteria tied to ${rewriteActions}.`,
     ].join("\n\n"),
     expectedOutcomesDeliverables: [
       `The expected outcomes should identify what reviewers will receive or observe at the end of ${project.phase}.`,
+      contextualAnchor(project, "expectedOutcomesDeliverables"),
       `Describe concrete deliverables such as prototypes, data packages, reports, demonstrations, models, software, or validation artifacts, then connect each one to a decision the evaluator or customer can make.`,
       `The strongest deliverables include acceptance criteria and explain how they support the next funding, research, or adoption decision.`,
     ].join("\n\n"),
     evaluationMetricsSuccessCriteria: [
       `Evaluation metrics should define how ${project.name} will prove feasibility and value.`,
+      contextualAnchor(project, "evaluationMetricsSuccessCriteria"),
       `For each core objective, state the baseline, target threshold, test method, data source, and pass/fail criterion that will be used during ${project.phase}.`,
       `Metrics should be realistic for the award period while still strong enough to support ${profile.evaluationEmphasis.join(", ")}.`,
     ].join("\n\n"),
     relatedWorkPriorRd: [
       `Related work and prior R&D should show that the team understands the technical baseline and is not starting from unsupported claims.`,
+      contextualAnchor(project, "relatedWorkPriorRd"),
       `Summarize relevant prior prototypes, data, studies, publications, customer pilots, or internal R&D, then state what gap remains for this effort to close.`,
       `The section should make novelty and feasibility easier to score by comparing the proposed work with current alternatives and known limitations.`,
     ].join("\n\n"),
     team: [
       `The team section should map each contributor to the work they directly own, including technical execution, customer discovery, commercialization, and transition planning.`,
+      contextualAnchor(project, "team"),
       `For ${project.name}, reviewers should see who is accountable for architecture, experimentation, program management, security or regulatory constraints, and buyer engagement.`,
       `Any gaps should be addressed through advisors, subcontractors, hiring milestones, or partner commitments instead of left implicit.`,
     ].join("\n\n"),
     facilitiesEquipmentResources: [
       `Facilities, equipment, and resources should show that the team can execute the proposed work without hidden dependencies.`,
+      contextualAnchor(project, "facilitiesEquipmentResources"),
       `Identify the labs, equipment, software, datasets, compute resources, testing environments, manufacturing access, or clinical/regulatory resources needed for each major task.`,
       `For reviewer confidence, connect each resource to the work plan and explain whether it is already available, partner-provided, or still to be secured.`,
     ].join("\n\n"),
     commercializationTransition: [
       `Commercialization and transition should describe the path from prototype evidence to adoption, not just a market opportunity.`,
+      contextualAnchor(project, "commercializationTransition"),
       `For this ${profile.label} project, the draft should identify target users, first use cases, buyer type, procurement or market trigger, and the ${project.agency} stakeholder most likely to sponsor follow-on activity.`,
       `Use the evaluation guidance as source material: ${transitionSource}.`,
     ].join("\n\n"),
     customerDiscoveryEndUserValidation: [
       `Customer discovery should document what the team has learned from end users, buyers, partners, or mission owners.`,
+      contextualAnchor(project, "customerDiscoveryEndUserValidation"),
       `Summarize interviews, letters, pilots, memoranda, feedback themes, workflow observations, or validation evidence, using bracketed placeholders where specific names or dates are still needed.`,
       `The section should connect that evidence to the problem statement, product requirements, first use case, and commercialization or transition plan.`,
     ].join("\n\n"),
     phaseIToPhaseIITransition: [
       `The Phase I to Phase II transition plan should explain how this effort converts feasibility evidence into a larger prototype or validation program.`,
+      contextualAnchor(project, "phaseIToPhaseIITransition"),
       `State the evidence package needed for the next phase, the technical maturity target, the expected Phase II scope, and the customer, agency, investor, or partner milestones that would support continuation.`,
       `A strong plan makes the next decision obvious: what must be true, who cares, and what funding or adoption path follows.`,
     ].join("\n\n"),
     risks: [
       `The risk section should make the proposal feel controlled and executable.`,
+      contextualAnchor(project, "risks"),
       `List the highest technical, schedule, budget, regulatory, security, and adoption risks, then pair each with likelihood, impact, mitigation, fallback plan, and evidence the team will collect.`,
       `The strongest risks are specific to ${project.name} and tied to task-level decision points, not generic project management language.`,
     ].join("\n\n"),
     securityComplianceCyber: [
       `Security, compliance, and cyber content should identify constraints that could affect execution, approval, deployment, or data handling.`,
+      contextualAnchor(project, "securityComplianceCyber"),
       `Address applicable standards or review paths such as CMMC, NIST controls, ITAR/export, HIPAA, human subjects, privacy, safety, cybersecurity testing, or agency-specific authorization requirements where relevant.`,
       `For each applicable constraint, state the mitigation plan, responsible owner, and evidence needed to show the proposal can proceed compliantly.`,
     ].join("\n\n"),
     dataRightsIpStrategy: [
       `The data rights and IP strategy should explain what the company owns, what background IP is being used, and how the proposed work will protect defensible advantage.`,
+      contextualAnchor(project, "dataRightsIpStrategy"),
       `Address patents, trade secrets, licenses, government purpose rights, deliverable data, third-party dependencies, and freedom-to-operate assumptions where relevant.`,
       `The section should make commercialization and government adoption easier to evaluate by reducing ambiguity around ownership and rights.`,
     ].join("\n\n"),
     budgetNarrative: [
       `The budget narrative should explain why each cost is necessary to complete the technical work plan.`,
+      contextualAnchor(project, "budgetNarrative"),
       `Labor should be connected to task ownership, materials and software to prototype or test needs, travel to customer or transition activities, and subcontractors to specialized capabilities the core team does not provide.`,
       `Close the section by tying cost realism to expected deliverables and the evidence package needed for the next funding or adoption decision.`,
     ].join("\n\n"),
     referencesCitations: [
       `References and citations should give reviewers a concise evidence trail for technical, scientific, regulatory, market, and prior-art claims.`,
+      contextualAnchor(project, "referencesCitations"),
       `List sources that support the baseline, state of the art, standards, market facts, clinical or scientific evidence, and any cited performance claims.`,
       `Use a consistent citation format and add bracketed placeholders where a source must still be verified before submission.`,
     ].join("\n\n"),
