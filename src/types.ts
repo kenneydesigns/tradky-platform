@@ -62,6 +62,31 @@ export type FundingDecision = "Select" | "Do Not Select";
 
 export type WeaknessImpactLevel = "Critical" | "High" | "Medium" | "Low";
 
+export type TopTenAssessment = {
+  is_top_10_percent: "Yes" | "No";
+  rationale: string;
+};
+
+export type ComplianceGate = {
+  status: "Pass" | "Fail" | "Unknown";
+  issues: string[];
+  rationale: string;
+};
+
+export type DecisionDimensionScores = {
+  customer_understanding: number;
+  mission_impact: number;
+  clarity_for_non_technical_audience: number;
+  transition_and_scale: number;
+};
+
+export type TechFirstWritingAssessment = {
+  detected: "Yes" | "No";
+  severity: WeaknessImpactLevel;
+  rationale: string;
+  fix: string;
+};
+
 export type RankedWeakness = {
   severity: WeaknessImpactLevel;
   weakness: string;
@@ -71,14 +96,25 @@ export type RankedWeakness = {
   evaluator_interpretation: string;
 };
 
+export type KeyRewrite = {
+  problem: string;
+  why_it_matters_to_non_technical_evaluator: string;
+  before: string;
+  after: string;
+};
+
 export type MultiAgencyEvaluation = {
   agency_detected: string;
   fit_score: number;
   quality_score: number;
   funding_decision: FundingDecision;
   decision_rationale: string;
+  top_10_assessment: TopTenAssessment;
   primary_failure_reason: string;
   most_likely_rejection_issue: string;
+  compliance_gate: ComplianceGate;
+  dimension_scores: DecisionDimensionScores;
+  tech_first_writing: TechFirstWritingAssessment;
   confidence: "High" | "Moderate" | "Low";
   confidence_reason: string;
   flags: string[];
@@ -86,7 +122,9 @@ export type MultiAgencyEvaluation = {
   top_strengths: string[];
   top_weaknesses: string[];
   weakness_rankings: RankedWeakness[];
+  key_rewrites: KeyRewrite[];
   priority_actions: string[];
+  final_verdict: string;
 };
 
 export type Project = {
