@@ -1439,6 +1439,208 @@ select:focus {
   line-height: 1.42;
 }
 
+.suggestion-implementation {
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.implementation-header,
+.rewrite-preview header {
+  align-items: flex-start;
+}
+
+.implementation-header h3,
+.rewrite-preview h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.98rem;
+  line-height: 1.2;
+}
+
+.implementation-header p,
+.rewrite-preview header p,
+.selected-suggestion-review p,
+.copy-status {
+  margin: 3px 0 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.implementation-header > span,
+.rewrite-preview header > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--accent-dark);
+  font-size: 0.78rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.suggestion-selection-toolbar,
+.rewrite-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.selectable-suggestion-list {
+  display: grid;
+  gap: 8px;
+}
+
+.selectable-suggestion-list label {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: #34413c;
+  line-height: 1.42;
+}
+
+.selectable-suggestion-list label.selected {
+  border-color: var(--accent);
+  background: #f1fbf8;
+}
+
+.selectable-suggestion-list input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+
+.selected-suggestion-review {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.selected-suggestion-review > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.selected-suggestion-review strong {
+  color: var(--ink);
+  font-size: 0.86rem;
+}
+
+.selected-suggestion-review span {
+  color: var(--accent-dark);
+  font-size: 0.78rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.selected-suggestion-review ol {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 20px;
+  color: #34413c;
+  line-height: 1.42;
+}
+
+.inline-error {
+  padding: 10px;
+  border: 1px solid #f1c2c2;
+  border-radius: 8px;
+  background: #fff7f7;
+  color: var(--red);
+  font-weight: 750;
+}
+
+.implement-suggestions-button {
+  justify-self: start;
+}
+
+.rewrite-preview {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.rewrite-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.rewrite-preview-selected {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.rewrite-preview-selected strong {
+  color: var(--ink);
+  font-size: 0.84rem;
+}
+
+.rewrite-preview-selected ol {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 20px;
+  color: #34413c;
+  line-height: 1.42;
+}
+
+.rewrite-preview article {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.rewrite-preview h4 {
+  margin: 0;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--ink);
+  font-size: 0.84rem;
+}
+
+.preview-text {
+  max-height: 270px;
+  overflow: auto;
+  padding: 10px;
+  color: #34413c;
+  line-height: 1.48;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.copy-status {
+  font-weight: 750;
+}
+
 .criterion-list {
   margin-top: 4px;
 }
@@ -1547,7 +1749,8 @@ select {
   .finding-list.compact,
   .scoring-details,
   .builder-layout,
-  .section-insights {
+  .section-insights,
+  .rewrite-preview-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1602,6 +1805,7 @@ select {
   .toolbar-actions,
   .evaluation-report-actions,
   .section-editor-actions,
+  .rewrite-preview-actions,
   .modal-actions {
     justify-content: stretch;
   }
@@ -1611,6 +1815,9 @@ select {
   .evaluation-report-actions .button,
   .score-export-row .button,
   .section-editor-actions .button,
+  .suggestion-selection-toolbar .button,
+  .rewrite-preview-actions .button,
+  .implement-suggestions-button,
   .modal-actions .button,
   .page-header .button,
   .action-strip .button {

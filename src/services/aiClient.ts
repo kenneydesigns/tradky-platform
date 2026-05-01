@@ -3,15 +3,24 @@ import {
   DraftSectionsResult,
   EvaluateInput,
   EvaluationResult,
+  ImplementSectionSuggestionsInput,
+  ImplementSectionSuggestionsResult,
   SectionSuggestionsInput,
   SectionSuggestionsResult,
 } from "../types";
-import { generateMockDraftSections, generateMockEvaluation, generateMockSectionSuggestions } from "./mockAi";
+import {
+  generateMockDraftSections,
+  generateMockEvaluation,
+  generateMockImplementedSectionSuggestions,
+  generateMockSectionSuggestions,
+} from "./mockAi";
 
 const AI_MODE = import.meta.env.VITE_AI_MODE ?? (import.meta.env.PROD ? "api" : "mock");
 const EVALUATION_ENDPOINT = import.meta.env.VITE_AI_ENDPOINT ?? "/api/evaluate";
 const DRAFT_SECTIONS_ENDPOINT = import.meta.env.VITE_AI_DRAFT_ENDPOINT ?? "/api/draft-sections";
 const SECTION_SUGGESTIONS_ENDPOINT = import.meta.env.VITE_AI_SUGGESTIONS_ENDPOINT ?? "/api/section-suggestions";
+const IMPLEMENT_SUGGESTIONS_ENDPOINT =
+  import.meta.env.VITE_AI_IMPLEMENT_SUGGESTIONS_ENDPOINT ?? "/api/implement-section-suggestions";
 
 type ApiErrorMessage = {
   message: string;
@@ -129,5 +138,20 @@ export const suggestVolumeSections = async (input: SectionSuggestionsInput): Pro
     input,
     fallback: generateMockSectionSuggestions,
     failureMessage: "Section suggestions request failed",
+  });
+};
+
+export const implementSectionSuggestions = async (
+  input: ImplementSectionSuggestionsInput,
+): Promise<ImplementSectionSuggestionsResult> => {
+  if (AI_MODE === "mock") {
+    return generateMockImplementedSectionSuggestions(input);
+  }
+
+  return postJson({
+    endpoint: IMPLEMENT_SUGGESTIONS_ENDPOINT,
+    input,
+    fallback: generateMockImplementedSectionSuggestions,
+    failureMessage: "Section suggestion implementation failed",
   });
 };

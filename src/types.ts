@@ -313,3 +313,15 @@ export type SectionSuggestionsResult = {
   generatedAt: string;
   sections: SectionSuggestion[];
 };
+
+export type ImplementSectionSuggestionsInput = {
+  project: Project;
+  sectionKey: VolumeSectionKey;
+  selectedSuggestions: string[];
+};
+
+export type ImplementSectionSuggestionsResult = {
+  generatedAt: string;
+  section: VolumeSection;
+  selectedSuggestions: string[];
+};

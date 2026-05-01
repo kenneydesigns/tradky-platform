@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
+  Copy,
   Download,
   FileDown,
   Gauge,
@@ -11,6 +12,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   WandSparkles,
+  XCircle,
 } from "lucide-react";
 import {
   ComplianceStatus,
@@ -22,7 +24,7 @@ import {
   VolumeSectionStatus,
 } from "../types";
 import { SOLICITATION_PROFILE_OPTIONS, getSectionStatusesForProfile, getSolicitationProfile } from "../data/solicitationProfiles";
-import { draftVolumeSections, suggestVolumeSections } from "../services/aiClient";
+import { draftVolumeSections, implementSectionSuggestions, suggestVolumeSections } from "../services/aiClient";
 import { exportDocx, exportEvaluationReportDocx, exportEvaluationReportMarkdown, exportMarkdown } from "../utils/exporters";
 import { analyzeCrossSectionAlignment } from "../utils/alignmentChecker";
 import { analyzeProposalCompliance } from "../utils/complianceChecker";
@@ -38,6 +40,14 @@ import {
 type VolumeBuilderProps = {
   project: Project;
   onUpdateProject: (project: Project) => void;
+};
+
+type RewritePreview = {
+  key: VolumeSectionKey;
+  title: string;
+  before: string;
+  after: string;
+  selectedSuggestions: string[];
 };
 
 const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
@@ -102,10 +112,15 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
   const [activeKey, setActiveKey] = useState<VolumeSectionKey>(project.sections[0].key);
   const [draftingTarget, setDraftingTarget] = useState<"empty" | VolumeSectionKey | null>(null);
   const [suggestingTarget, setSuggestingTarget] = useState<"all" | VolumeSectionKey | null>(null);
+  const [implementingTarget, setImplementingTarget] = useState<VolumeSectionKey | null>(null);
   const [suggestionsByKey, setSuggestionsByKey] = useState<Partial<Record<VolumeSectionKey, SectionSuggestion>>>({});
+  const [selectedSuggestionIndexesByKey, setSelectedSuggestionIndexesByKey] = useState<Partial<Record<VolumeSectionKey, number[]>>>({});
+  const [rewritePreview, setRewritePreview] = useState<RewritePreview | null>(null);
   const [includeHiddenSavedSections, setIncludeHiddenSavedSections] = useState(false);
   const [draftError, setDraftError] = useState("");
   const [suggestionError, setSuggestionError] = useState("");
+  const [rewriteError, setRewriteError] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
   const profile = useMemo(() => getSolicitationProfile(project.solicitationProfile), [project.solicitationProfile]);
   const sectionStatuses = useMemo(() => getProjectSectionStatuses(project), [project]);
   const visibleSections = useMemo(() => getProjectVisibleSections(project), [project]);
@@ -129,6 +144,16 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
   const sectionCompleteness = useMemo(() => createCompletenessMap(project.sections), [project.sections]);
   const evaluatorScore = activeSuggestion?.evaluatorScore ?? activeSectionScore?.score;
   const displayEvaluatorScore = evaluatorScore ?? 0;
+  const activeSuggestionItems = activeSuggestion?.suggestions ?? [];
+  const selectedSuggestionIndexes = (selectedSuggestionIndexesByKey[activeSection.key] ?? []).filter(
+    (index) => index >= 0 && index < activeSuggestionItems.length,
+  );
+  const selectedSuggestionTexts = selectedSuggestionIndexes
+    .map((index) => activeSuggestionItems[index])
+    .filter((suggestion): suggestion is string => Boolean(suggestion));
+  const allActiveSuggestionsSelected =
+    activeSuggestionItems.length > 0 && selectedSuggestionIndexes.length === activeSuggestionItems.length;
+  const activeRewritePreview = rewritePreview?.key === activeSection.key ? rewritePreview : null;
   const emptySectionKeys = useMemo(
     () => visibleSections.filter((section) => !section.content.trim()).map((section) => section.key),
     [visibleSections],
@@ -144,6 +169,19 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
     onUpdateProject(buildProjectAssessments(nextProject));
   };
 
+  const resetImplementationState = (sectionKeys: VolumeSectionKey[]) => {
+    setSelectedSuggestionIndexesByKey((current) => {
+      const next = { ...current };
+      sectionKeys.forEach((key) => {
+        delete next[key];
+      });
+      return next;
+    });
+    setRewritePreview((current) => (current && sectionKeys.includes(current.key) ? null : current));
+    setRewriteError("");
+    setCopyStatus("");
+  };
+
   const clearSuggestions = (sectionKeys: VolumeSectionKey[]) => {
     setSuggestionsByKey((current) => {
       const next = { ...current };
@@ -152,6 +190,7 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
       });
       return next;
     });
+    resetImplementationState(sectionKeys);
   };
 
   const updateSection = (section: VolumeSection, content: string) => {
@@ -199,6 +238,8 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
 
     try {
       const result = await suggestVolumeSections({ project, sectionKeys });
+      const returnedKeys = result.sections.map((section) => section.key);
+      resetImplementationState(returnedKeys);
       setSuggestionsByKey((current) => ({
         ...current,
         ...Object.fromEntries(result.sections.map((section) => [section.key, section])),
@@ -227,6 +268,95 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
 
   const refreshActiveSuggestions = () => {
     void requestSuggestions([activeSection.key], activeSection.key);
+  };
+
+  const updateSuggestionSelection = (sectionKey: VolumeSectionKey, suggestionIndex: number, isSelected: boolean) => {
+    setSelectedSuggestionIndexesByKey((current) => {
+      const currentIndexes = current[sectionKey] ?? [];
+      const nextIndexes = isSelected
+        ? [...new Set([...currentIndexes, suggestionIndex])].sort((a, b) => a - b)
+        : currentIndexes.filter((index) => index !== suggestionIndex);
+
+      return {
+        ...current,
+        [sectionKey]: nextIndexes,
+      };
+    });
+    setRewritePreview((current) => (current?.key === sectionKey ? null : current));
+    setRewriteError("");
+    setCopyStatus("");
+  };
+
+  const selectAllActiveSuggestions = () => {
+    if (!activeSuggestionItems.length) return;
+    setSelectedSuggestionIndexesByKey((current) => ({
+      ...current,
+      [activeSection.key]: activeSuggestionItems.map((_, index) => index),
+    }));
+    setRewritePreview((current) => (current?.key === activeSection.key ? null : current));
+    setRewriteError("");
+    setCopyStatus("");
+  };
+
+  const clearActiveSuggestionSelection = () => {
+    setSelectedSuggestionIndexesByKey((current) => ({
+      ...current,
+      [activeSection.key]: [],
+    }));
+    setRewritePreview((current) => (current?.key === activeSection.key ? null : current));
+    setRewriteError("");
+    setCopyStatus("");
+  };
+
+  const requestSuggestionImplementation = async () => {
+    if (!activeSuggestion || !selectedSuggestionTexts.length) return;
+
+    const sectionSnapshot = activeSection;
+    setImplementingTarget(sectionSnapshot.key);
+    setRewriteError("");
+    setCopyStatus("");
+
+    try {
+      const result = await implementSectionSuggestions({
+        project,
+        sectionKey: sectionSnapshot.key,
+        selectedSuggestions: selectedSuggestionTexts,
+      });
+      setRewritePreview({
+        key: sectionSnapshot.key,
+        title: sectionSnapshot.title,
+        before: sectionSnapshot.content,
+        after: result.section.content,
+        selectedSuggestions: result.selectedSuggestions,
+      });
+    } catch (caught) {
+      setRewriteError(caught instanceof Error ? caught.message : "Section rewrite failed");
+    } finally {
+      setImplementingTarget(null);
+    }
+  };
+
+  const acceptRewrite = () => {
+    if (!activeRewritePreview) return;
+    updateSection(activeSection, activeRewritePreview.after);
+    setRewritePreview(null);
+    setCopyStatus("");
+  };
+
+  const rejectRewrite = () => {
+    setRewritePreview(null);
+    setCopyStatus("");
+  };
+
+  const copyRewrite = async () => {
+    if (!activeRewritePreview) return;
+
+    try {
+      await navigator.clipboard.writeText(activeRewritePreview.after);
+      setCopyStatus("Rewrite copied.");
+    } catch {
+      setCopyStatus("Copy failed. Select the rewrite text and copy it manually.");
+    }
   };
 
   const updateProfile = (solicitationProfile: SolicitationProfileKey) => {
@@ -746,12 +876,129 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
                       </dd>
                     </div>
                   </dl>
-                  {activeSuggestion.suggestions.length ? (
-                    <ul>
-                      {activeSuggestion.suggestions.map((suggestion) => (
-                        <li key={suggestion}>{suggestion}</li>
-                      ))}
-                    </ul>
+                  {activeSuggestionItems.length ? (
+                    <section className="suggestion-implementation" aria-label="Implement These Suggestions with AI">
+                      <header className="implementation-header">
+                        <div>
+                          <h3>Implement These Suggestions with AI</h3>
+                          <p>Choose the evaluator recommendations the rewrite should apply to this section.</p>
+                        </div>
+                        <span>
+                          {selectedSuggestionTexts.length}/{activeSuggestionItems.length} selected
+                        </span>
+                      </header>
+
+                      <div className="suggestion-selection-toolbar">
+                        <button
+                          className="button compact"
+                          type="button"
+                          disabled={allActiveSuggestionsSelected}
+                          onClick={selectAllActiveSuggestions}
+                        >
+                          <CheckCircle2 size={15} />
+                          Select All
+                        </button>
+                        <button
+                          className="button compact"
+                          type="button"
+                          disabled={!selectedSuggestionTexts.length}
+                          onClick={clearActiveSuggestionSelection}
+                        >
+                          <XCircle size={15} />
+                          Clear Selection
+                        </button>
+                      </div>
+
+                      <div className="selectable-suggestion-list" role="group" aria-label="Evaluator suggestions to implement">
+                        {activeSuggestionItems.map((suggestion, index) => {
+                          const isSelected = selectedSuggestionIndexes.includes(index);
+
+                          return (
+                            <label className={isSelected ? "selected" : ""} key={`${index}-${suggestion}`}>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(event) => updateSuggestionSelection(activeSection.key, index, event.target.checked)}
+                              />
+                              <span>{suggestion}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+
+                      <div className="selected-suggestion-review">
+                        <div>
+                          <strong>Selected suggestions to apply</strong>
+                          <span>{selectedSuggestionTexts.length ? `${selectedSuggestionTexts.length} ready` : "None selected"}</span>
+                        </div>
+                        {selectedSuggestionTexts.length ? (
+                          <ol>
+                            {selectedSuggestionTexts.map((suggestion, index) => (
+                              <li key={`${index}-${suggestion}`}>{suggestion}</li>
+                            ))}
+                          </ol>
+                        ) : (
+                          <p>Select one or more suggestions to review them here before asking AI for a rewrite.</p>
+                        )}
+                      </div>
+
+                      {rewriteError ? <div className="inline-error">{rewriteError}</div> : null}
+
+                      <button
+                        className="button primary implement-suggestions-button"
+                        type="button"
+                        disabled={!selectedSuggestionTexts.length || implementingTarget !== null}
+                        onClick={() => void requestSuggestionImplementation()}
+                      >
+                        <WandSparkles size={16} />
+                        {implementingTarget === activeSection.key ? "Implementing..." : "Implement Selected Suggestions with AI"}
+                      </button>
+
+                      {activeRewritePreview ? (
+                        <section className="rewrite-preview" aria-label={`${activeRewritePreview.title} before and after preview`}>
+                          <header>
+                            <div>
+                              <h3>Before / After Preview</h3>
+                              <p>Review the rewrite before replacing this section.</p>
+                            </div>
+                            <span>{countWords(activeRewritePreview.after)} words</span>
+                          </header>
+                          <div className="rewrite-preview-selected">
+                            <strong>Applied suggestions</strong>
+                            <ol>
+                              {activeRewritePreview.selectedSuggestions.map((suggestion, index) => (
+                                <li key={`${index}-${suggestion}`}>{suggestion}</li>
+                              ))}
+                            </ol>
+                          </div>
+                          <div className="rewrite-preview-grid">
+                            <article>
+                              <h4>Before</h4>
+                              <div className="preview-text">{activeRewritePreview.before || "No original section text."}</div>
+                            </article>
+                            <article>
+                              <h4>After</h4>
+                              <div className="preview-text">{activeRewritePreview.after}</div>
+                            </article>
+                          </div>
+                          <div className="rewrite-preview-actions">
+                            <button className="button primary compact" type="button" onClick={acceptRewrite}>
+                              <CheckCircle2 size={16} />
+                              Accept Rewrite
+                            </button>
+                            <button className="button compact" type="button" onClick={rejectRewrite}>
+                              <XCircle size={16} />
+                              Reject Rewrite
+                            </button>
+                            <button className="button compact" type="button" onClick={() => void copyRewrite()}>
+                              <Copy size={16} />
+                              Copy Rewrite
+                            </button>
+                          </div>
+                          {copyStatus ? <p className="copy-status">{copyStatus}</p> : null}
+                        </section>
+                      ) : null}
+                    </section>
                   ) : null}
                 </>
               ) : (

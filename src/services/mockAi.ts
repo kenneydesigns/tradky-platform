@@ -9,6 +9,8 @@ import {
   DraftSectionsResult,
   EvaluateInput,
   EvaluationResult,
+  ImplementSectionSuggestionsInput,
+  ImplementSectionSuggestionsResult,
   Project,
   SectionSuggestionsInput,
   SectionSuggestionsResult,
@@ -16,6 +18,7 @@ import {
   VolumeSectionKey,
 } from "../types";
 import { getSolicitationProfile } from "../data/solicitationProfiles";
+import { getSectionPurpose } from "../data/sectionPurposes";
 import { getProjectVisibleSections } from "../utils/sectionVisibility";
 import { analyzeSectionStrength } from "../utils/sectionStrength";
 
@@ -592,5 +595,68 @@ export const generateMockSectionSuggestions = async ({
   return {
     generatedAt: new Date().toISOString(),
     sections: project.sections.filter((section) => selectedKeys.has(section.key)).map((section) => mockSuggestionForSection(section, project)),
+  };
+};
+
+const cleanSelectedSuggestions = (selectedSuggestions: string[]) =>
+  [...new Set(selectedSuggestions.map((suggestion) => suggestion.replace(/\s+/g, " ").trim()).filter(Boolean))].slice(0, 8);
+
+const rewriteFindingAsSectionProse = (suggestion: string, section: VolumeSection, project: Project) => {
+  const profile = getSolicitationProfile(project.solicitationProfile);
+  const sectionPurpose = getSectionPurpose(section.key).replace(/\.$/, "").toLowerCase();
+  const normalizedSuggestion = suggestion
+    .replace(/^(does not clearly|does not|fails to|lacks|needs?|should)\s+/i, "")
+    .replace(/\.$/, "");
+  const evidencePlaceholder =
+    section.key === "evaluationMetricsSuccessCriteria"
+      ? "[baseline, target threshold, test method, and pass/fail criterion]"
+      : section.key === "commercializationTransition"
+        ? "[target customer, adoption trigger, revenue or transition evidence, and follow-on milestone]"
+        : section.key === "risks"
+          ? "[risk, likelihood, impact, mitigation, fallback, and residual-risk rationale]"
+          : "[specific proposal evidence, metric, customer/use case, or validation artifact]";
+
+  return [
+    `The section addresses ${normalizedSuggestion} by tying the claim to ${evidencePlaceholder}.`,
+    `For ${profile.label}, this evidence should be presented as reviewer-verifiable support for ${sectionPurpose}`,
+    "and should cite the current proposal context rather than adding unsupported facts.",
+  ].join(" ");
+};
+
+export const generateMockImplementedSectionSuggestions = async ({
+  project,
+  sectionKey,
+  selectedSuggestions,
+}: ImplementSectionSuggestionsInput): Promise<ImplementSectionSuggestionsResult> => {
+  await new Promise((resolve) => window.setTimeout(resolve, 700));
+
+  const section = project.sections.find((item) => item.key === sectionKey);
+  if (!section) {
+    throw new Error("Selected section was not found.");
+  }
+
+  const cleanSuggestions = cleanSelectedSuggestions(selectedSuggestions);
+  if (!cleanSuggestions.length) {
+    throw new Error("Select at least one evaluator suggestion to implement.");
+  }
+
+  const profile = getSolicitationProfile(project.solicitationProfile);
+  const originalText = section.content.trim();
+  const proposalAnchor = sourceSentence(
+    [project.proposalText, project.solicitationText, project.customSolicitationInstructions].filter(Boolean).join(" "),
+    `${profile.label} ${project.phase} context for ${project.name}`,
+  );
+  const opening = originalText.length
+    ? originalText
+    : `${section.title} should explain ${getSectionPurpose(section.key).toLowerCase()} The current proposal context starts from ${proposalAnchor}.`;
+  const implementedParagraphs = cleanSuggestions.map((suggestion) => rewriteFindingAsSectionProse(suggestion, section, project));
+
+  return {
+    generatedAt: new Date().toISOString(),
+    selectedSuggestions: cleanSuggestions,
+    section: {
+      ...section,
+      content: [opening, ...implementedParagraphs].join("\n\n"),
+    },
   };
 };
