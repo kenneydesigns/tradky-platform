@@ -1,4 +1,8 @@
 import { Project } from "../types";
+import { getSolicitationProfile } from "../data/solicitationProfiles";
+import { analyzeProposalCompliance } from "./complianceChecker";
+import { scoreProposalEvaluator } from "./evaluatorScoring";
+import { getProjectExportSections, getProjectVisibleSections, isSectionVisible, TechnicalVolumeExportOptions } from "./sectionVisibility";
 
 type ReviewStatus = "Yes" | "No" | "Review";
 
@@ -19,12 +23,19 @@ type MilestoneReportItem = {
 type EvaluationReport = {
   title: string;
   subtitle: string;
+  solicitationProfile: string;
+  overallScore: number;
   proposalTitle: string;
   topicNumber: string;
   phase: string;
   generatedDate: string;
   overallAssessment: string;
   proposalInfoRows: string[][];
+  complianceFindingRows: string[][];
+  sectionScoreRows: string[][];
+  highRiskIssues: string[];
+  rewritePriorities: string[];
+  goNoGoRecommendation: string;
   mandatoryRows: CriteriaReviewRow[];
   mandatoryResult: string;
   additionalRows: CriteriaReviewRow[];
@@ -130,7 +141,7 @@ const combinedProjectText = (project: Project) =>
     [
       project.solicitationText,
       project.proposalText,
-      ...project.sections.map((section) => `${section.title} ${section.content}`),
+      ...getProjectVisibleSections(project).map((section) => `${section.title} ${section.content}`),
     ].join(" "),
   );
 
@@ -191,6 +202,13 @@ const normalizeRatingLabel = (value: string) => {
   if (normalized.includes("acceptable")) return "Acceptable";
   if (normalized.includes("marginal")) return "Marginal";
   if (normalized.includes("poor")) return "Poor";
+  if (normalized.includes("non-compliant")) return "Non-Compliant";
+  if (normalized.includes("high risk")) return "High Risk";
+  if (normalized.includes("warning")) return "Warning";
+  if (normalized === "pass") return "Pass";
+  if (normalized.includes("no-go")) return "No-Go";
+  if (normalized.includes("conditional go")) return "Conditional Go";
+  if (normalized === "go") return "Go";
   if (normalized.includes("yes")) return "Yes";
   if (normalized.includes("no")) return "No";
   return normalized.includes("review") ? "Review Required" : value || "Review Required";
@@ -201,17 +219,17 @@ const displayStatus = (status: ReviewStatus | string) =>
 
 const ratingFill = (value: string) => {
   const normalized = normalizeRatingLabel(value);
-  if (normalized === "Excellent" || normalized === "Yes") return REPORT_COLORS.excellent;
+  if (normalized === "Excellent" || normalized === "Yes" || normalized === "Pass" || normalized === "Go") return REPORT_COLORS.excellent;
   if (normalized === "Good") return REPORT_COLORS.good;
-  if (normalized === "Acceptable") return REPORT_COLORS.acceptable;
-  if (normalized === "Marginal") return REPORT_COLORS.marginal;
-  if (normalized === "Poor" || normalized === "No") return REPORT_COLORS.poor;
+  if (normalized === "Acceptable" || normalized === "Warning" || normalized === "Conditional Go") return REPORT_COLORS.acceptable;
+  if (normalized === "Marginal" || normalized === "High Risk") return REPORT_COLORS.marginal;
+  if (normalized === "Poor" || normalized === "No" || normalized === "Non-Compliant" || normalized === "No-Go") return REPORT_COLORS.poor;
   return REPORT_COLORS.review;
 };
 
 const ratingTextColor = (value: string) => {
   const normalized = normalizeRatingLabel(value);
-  return normalized === "Acceptable" ? REPORT_COLORS.ink : REPORT_COLORS.white;
+  return normalized === "Acceptable" || normalized === "Warning" || normalized === "Conditional Go" ? REPORT_COLORS.ink : REPORT_COLORS.white;
 };
 
 const takeTop = (items: string[], count: number, fallback: string) => {
@@ -511,7 +529,9 @@ const buildRubricReviewRows = (project: Project) => {
 };
 
 const buildMilestoneRows = (project: Project) => {
-  const workPlan = project.sections.find((section) => section.key === "workPlan")?.content || project.proposalText;
+  const workPlan =
+    (isSectionVisible(project, "workPlan") ? project.sections.find((section) => section.key === "workPlan")?.content : "") ||
+    project.proposalText;
   const milestoneLines = workPlan
     .split(/\n+/)
     .map((line) => line.replace(/^[-*#\d.\s]+/, "").trim())
@@ -565,13 +585,14 @@ const buildOverallAssessment = (
 
 const buildEvaluationReport = (project: Project): EvaluationReport => {
   const evaluation = project.evaluation;
-  if (!evaluation) {
-    throw new Error("Run an evaluation before downloading a report.");
-  }
-
+  const profile = getSolicitationProfile(project.solicitationProfile);
+  const complianceAnalysis = analyzeProposalCompliance(project);
+  const evaluatorAssessment = scoreProposalEvaluator(project);
+  const readinessScore = evaluation?.readinessScore ?? evaluatorAssessment.overallScore;
   const mandatoryRows = buildMandatoryRows(project);
   const hasDisqualifier = mandatoryRows.some((row) => row.status === "No");
   const hasManualMandatoryChecks = mandatoryRows.some((row) => row.status === "Review");
+  const hasHighRiskCompliance = complianceAnalysis.findings.some((finding) => finding.status === "High Risk" || finding.status === "Non-Compliant");
   const mandatoryResult = hasDisqualifier
     ? "DISQUALIFIED - one or more mandatory criteria appear to be unmet."
     : hasManualMandatoryChecks
@@ -581,54 +602,97 @@ const buildEvaluationReport = (project: Project): EvaluationReport => {
   const technical = getRubricScore(project, "technicalMerit");
   const defense = getRubricScore(project, "defenseNeed");
   const commercial = getRubricScore(project, "commercialization");
-  const overallRating = scoreLabel(evaluation.readinessScore);
-  const modelFundingDecision = evaluation.multiAgencyEvaluation?.funding_decision;
+  const overallRating = scoreLabel(readinessScore);
+  const modelFundingDecision = evaluation?.multiAgencyEvaluation?.funding_decision;
   const selectabilityAssessment = hasDisqualifier
     ? "Do Not Select"
-    : modelFundingDecision ?? (evaluation.readinessScore >= 85 && !hasManualMandatoryChecks ? "Select" : "Do Not Select");
-  const finalDecision = selectabilityAssessment;
+    : modelFundingDecision ?? (readinessScore >= 85 && !hasManualMandatoryChecks && !hasHighRiskCompliance ? "Select" : "Do Not Select");
+  const goNoGoRecommendation =
+    hasDisqualifier || complianceAnalysis.overallStatus === "Non-Compliant"
+      ? "No-Go"
+      : readinessScore >= 78 && !hasHighRiskCompliance
+        ? "Go"
+        : "Conditional Go";
+  const finalDecision = goNoGoRecommendation;
   const proposalTitle = project.name || "Not specified";
-  const topicNumber = project.topicId || "Not specified";
+  const topicNumber = project.solicitationNumber || project.topicId || "Not specified";
   const phase = /direct/i.test(project.phase) ? "Direct-to-Phase II (D2P2)" : project.phase || "Not specified";
-  const generatedDate = formatDisplayDateTime(evaluation.generatedAt);
+  const generatedDate = formatDisplayDateTime(evaluation?.generatedAt ?? new Date().toISOString());
   const milestoneRows = buildMilestoneRows(project);
-  const keyStrengths = evaluation.strengths.map(cleanEvaluatorText).filter(Boolean);
-  const keyWeaknesses = evaluation.weaknesses.map(cleanEvaluatorText).filter(Boolean);
+  const keyStrengths = (evaluation?.strengths ?? evaluatorAssessment.majorStrengths).map(cleanEvaluatorText).filter(Boolean);
+  const keyWeaknesses = (evaluation?.weaknesses ?? evaluatorAssessment.majorWeaknesses).map(cleanEvaluatorText).filter(Boolean);
+  const complianceFindingRows = complianceAnalysis.findings.map((finding) => [
+    finding.title,
+    finding.status,
+    cleanEvaluatorText(finding.detail),
+    cleanEvaluatorText(finding.recommendation),
+  ]);
+  const sectionScoreRows = evaluatorAssessment.sectionScores.map((sectionScore) => [
+    sectionScore.title,
+    `${sectionScore.score}/100`,
+    cleanEvaluatorText(sectionScore.majorStrengths[0] ?? "No major strengths identified."),
+    cleanEvaluatorText(sectionScore.majorWeaknesses[0] ?? "No major weaknesses identified."),
+    cleanEvaluatorText(sectionScore.recommendedFixes[0] ?? "Add reviewer-facing evidence."),
+  ]);
+  const highRiskIssues = [
+    ...complianceAnalysis.findings
+      .filter((finding) => finding.status === "High Risk" || finding.status === "Non-Compliant")
+      .map((finding) => `${finding.title}: ${finding.detail}`),
+    ...evaluatorAssessment.majorWeaknesses.slice(0, 3),
+  ].map(cleanEvaluatorText);
+  const rewritePriorities = [
+    ...(evaluation?.rewriteActions ?? []),
+    ...evaluatorAssessment.recommendedFixes,
+    ...complianceAnalysis.findings
+      .filter((finding) => finding.status !== "Pass")
+      .map((finding) => finding.recommendation),
+  ].map(cleanEvaluatorText);
   const recommendedNextSteps = [
     "Strengthen Customer Memorandum if weak.",
     "Improve commercialization evidence: traction, revenue, LOIs, pilots, and funding commitments.",
     "Clarify technical risk mitigation.",
     "Align more explicitly to DoD critical technology priorities.",
     "Refine milestone plan to emphasize R&D outcomes.",
-    ...evaluation.rewriteActions.slice(0, 3).map(cleanEvaluatorText),
+    ...rewritePriorities.slice(0, 3),
   ];
 
   return {
-    title: "AFWERX SBIR/STTR D2P2 Proposal Evaluation Report",
-    subtitle: "Aligned with AFX25.5 Release 8 + Amendment 1, DoD 25.4 SBIR BAA, and AFWERX criteria.",
+    title: "Multi-Agency SBIR/STTR Proposal Evaluation Report",
+    subtitle: `Aligned with ${profile.label} profile, selected evaluation weights, compliance checks, and current builder sections.`,
+    solicitationProfile: profile.label,
+    overallScore: readinessScore,
     proposalTitle,
     topicNumber,
     phase,
     generatedDate,
     overallAssessment: buildOverallAssessment(
-      evaluation.readinessScore,
+      readinessScore,
       overallRating,
       selectabilityAssessment,
       finalDecision,
-      hasManualMandatoryChecks,
+      hasManualMandatoryChecks || hasHighRiskCompliance,
     ),
     proposalInfoRows: [
       ["Company Name", "Not specified"],
       ["Proposal Title", proposalTitle],
-      ["Topic Number", topicNumber],
+      ["Solicitation Profile", profile.label],
+      ["Solicitation / Topic Number", topicNumber],
+      ["Agency", project.agency || profile.agency],
       ["Phase", phase],
       [
         "Submission Date",
-        project.dueDate ? `Not specified (project due date: ${formatDisplayDate(project.dueDate)})` : "Not specified",
+        project.closeDate || project.dueDate
+          ? `Not specified (project close/due date: ${formatDisplayDate(project.closeDate || project.dueDate)})`
+          : "Not specified",
       ],
-      ["Evaluator", "AI-assisted DAF/AFWERX proposal evaluator"],
+      ["Evaluator", "AI-assisted multi-agency SBIR/STTR proposal evaluator"],
       ["Evaluation Generated", generatedDate],
     ],
+    complianceFindingRows,
+    sectionScoreRows,
+    highRiskIssues: highRiskIssues.length ? highRiskIssues : ["No high-risk issues detected by the local compliance and scoring checks."],
+    rewritePriorities: rewritePriorities.length ? rewritePriorities : ["Add solicitation fit, evidence, metrics, transition, and risk logic."],
+    goNoGoRecommendation,
     mandatoryRows,
     mandatoryResult,
     additionalRows: buildAdditionalRows(project),
@@ -636,14 +700,22 @@ const buildEvaluationReport = (project: Project): EvaluationReport => {
     defenseRows,
     commercializationRows,
     transitionRating: defense?.label ?? overallRating,
-    transitionStrengths: takeTop(defense?.strengths?.length ? defense.strengths : evaluation.transitionPotential, 3, "Transition strengths require validation."),
-    transitionWeaknesses: takeTop(defense?.gaps?.length ? defense.gaps : evaluation.weaknesses, 3, "Transition weaknesses require validation."),
-    transitionGaps: takeTop(evaluation.complianceGaps, 3, "DoD roadmap gaps require validation."),
+    transitionStrengths: takeTop(
+      defense?.strengths?.length ? defense.strengths : evaluation?.transitionPotential ?? evaluatorAssessment.majorStrengths,
+      3,
+      "Transition strengths require validation.",
+    ),
+    transitionWeaknesses: takeTop(
+      defense?.gaps?.length ? defense.gaps : evaluation?.weaknesses ?? evaluatorAssessment.majorWeaknesses,
+      3,
+      "Transition weaknesses require validation.",
+    ),
+    transitionGaps: takeTop(evaluation?.complianceGaps ?? complianceAnalysis.findings.map((finding) => finding.detail), 3, "Roadmap gaps require validation."),
     transitionRecommendations: [
       "Strengthen transition partner commitments.",
       "Define acquisition pathway earlier.",
       "Map technology to specific DoD programs.",
-      ...evaluation.transitionPotential.slice(0, 2).map(cleanEvaluatorText),
+      ...(evaluation?.transitionPotential ?? evaluatorAssessment.recommendedFixes).slice(0, 2).map(cleanEvaluatorText),
     ],
     milestoneRows,
     milestoneItems: buildMilestoneItems(milestoneRows),
@@ -652,7 +724,9 @@ const buildEvaluationReport = (project: Project): EvaluationReport => {
       ["Defense Need", defense?.label ?? overallRating],
       ["Commercialization", commercial?.label ?? overallRating],
       ["Transition Feasibility", defense?.label ?? overallRating],
-      ["Readiness Score", `${evaluation.readinessScore}/100`],
+      ["Evaluator Score", `${readinessScore}/100`],
+      ["Compliance Status", complianceAnalysis.overallStatus],
+      ["Go / No-Go", goNoGoRecommendation],
     ],
     overallRating,
     selectabilityAssessment,
@@ -662,8 +736,8 @@ const buildEvaluationReport = (project: Project): EvaluationReport => {
     finalDecision,
     finalDecisionNote: hasManualMandatoryChecks
       ? "Decision is conditional on manual verification of mandatory compliance items."
-      : evaluation.multiAgencyEvaluation?.decision_rationale ??
-        "Decision reflects the current evaluator score and extracted compliance evidence.",
+      : evaluation?.multiAgencyEvaluation?.decision_rationale ??
+        "Decision reflects the current evaluator score, compliance findings, section scores, and extracted evidence.",
   };
 };
 
@@ -692,6 +766,22 @@ export const buildEvaluationReportMarkdown = (project: Project) => {
     "## Proposal Information",
     "",
     markdownTable(["Field", "Value"], report.proposalInfoRows),
+    "",
+    "## Solicitation Profile",
+    "",
+    `**Profile:** ${report.solicitationProfile}`,
+    "",
+    `**Overall Score:** ${report.overallScore}/100`,
+    "",
+    `**Go / No-Go Recommendation:** ${report.goNoGoRecommendation}`,
+    "",
+    "## Compliance Findings",
+    "",
+    markdownTable(["Finding", "Status", "Detail", "Recommendation"], report.complianceFindingRows),
+    "",
+    "## Section-by-Section Scores",
+    "",
+    markdownTable(["Section", "Score", "Strength", "Weakness", "Recommended Fix"], report.sectionScoreRows),
     "",
     "## 1. Mandatory Criteria Review (Auto-Disqualification)",
     "",
@@ -774,9 +864,17 @@ export const buildEvaluationReportMarkdown = (project: Project) => {
     "",
     markdownList(report.keyWeaknesses),
     "",
+    "## High-Risk Issues",
+    "",
+    markdownList(report.highRiskIssues),
+    "",
     "## 11. Recommended Next Steps",
     "",
     markdownList(report.recommendedNextSteps),
+    "",
+    "## Recommended Rewrite Priorities",
+    "",
+    markdownList(report.rewritePriorities.slice(0, 8)),
     "",
     "## 12. Final Recommendation",
     "",
@@ -792,18 +890,24 @@ export const exportEvaluationReportMarkdown = (project: Project) => {
   downloadBlob(blob, `${fileSafe(project.name)}-evaluation-report.md`);
 };
 
-export const buildMarkdown = (project: Project) => {
+export const buildMarkdown = (project: Project, options: TechnicalVolumeExportOptions = {}) => {
+  const profile = getSolicitationProfile(project.solicitationProfile);
   const metadata = [
     `# ${project.name}`,
     "",
+    `- Solicitation profile: ${profile.label}`,
     `- Agency: ${project.agency}`,
     `- Program: ${project.program}`,
+    `- Solicitation number: ${project.solicitationNumber || project.topicId || "Not specified"}`,
     `- Topic ID: ${project.topicId || "Not specified"}`,
     `- Phase: ${project.phase}`,
+    project.releaseDate ? `- Release date: ${project.releaseDate}` : "",
+    project.openDate ? `- Open date: ${project.openDate}` : "",
+    project.closeDate ? `- Close date: ${project.closeDate}` : "",
     project.dueDate ? `- Due date: ${project.dueDate}` : "",
   ].filter(Boolean);
 
-  const sections = project.sections.flatMap((section) => [
+  const sections = getProjectExportSections(project, options).flatMap((section) => [
     "",
     `## ${section.title}`,
     "",
@@ -813,13 +917,14 @@ export const buildMarkdown = (project: Project) => {
   return [...metadata, ...sections, ""].join("\n");
 };
 
-export const exportMarkdown = (project: Project) => {
-  const blob = new Blob([buildMarkdown(project)], { type: "text/markdown;charset=utf-8" });
+export const exportMarkdown = (project: Project, options: TechnicalVolumeExportOptions = {}) => {
+  const blob = new Blob([buildMarkdown(project, options)], { type: "text/markdown;charset=utf-8" });
   downloadBlob(blob, `${fileSafe(project.name)}.md`);
 };
 
-export const exportDocx = async (project: Project) => {
+export const exportDocx = async (project: Project, options: TechnicalVolumeExportOptions = {}) => {
   const { Document, HeadingLevel, Packer, Paragraph, TextRun } = await import("docx");
+  const profile = getSolicitationProfile(project.solicitationProfile);
 
   const children = [
     new Paragraph({
@@ -828,14 +933,19 @@ export const exportDocx = async (project: Project) => {
     }),
     new Paragraph({
       children: [
+        new TextRun({ text: `Solicitation profile: ${profile.label}`, break: 1 }),
         new TextRun({ text: `Agency: ${project.agency}`, break: 1 }),
         new TextRun({ text: `Program: ${project.program}`, break: 1 }),
+        new TextRun({ text: `Solicitation number: ${project.solicitationNumber || project.topicId || "Not specified"}`, break: 1 }),
         new TextRun({ text: `Topic ID: ${project.topicId || "Not specified"}`, break: 1 }),
         new TextRun({ text: `Phase: ${project.phase}`, break: 1 }),
+        new TextRun({ text: project.releaseDate ? `Release date: ${project.releaseDate}` : "Release date: Not specified", break: 1 }),
+        new TextRun({ text: project.openDate ? `Open date: ${project.openDate}` : "Open date: Not specified", break: 1 }),
+        new TextRun({ text: project.closeDate ? `Close date: ${project.closeDate}` : "Close date: Not specified", break: 1 }),
         new TextRun({ text: project.dueDate ? `Due date: ${project.dueDate}` : "Due date: Not specified", break: 1 }),
       ],
     }),
-    ...project.sections.flatMap((section) => [
+    ...getProjectExportSections(project, options).flatMap((section) => [
       new Paragraph({
         text: section.title,
         heading: HeadingLevel.HEADING_1,
@@ -1056,14 +1166,14 @@ export const exportEvaluationReportDocx = async (project: Project) => {
             margins: { top: 260, bottom: 260, left: 180, right: 180 },
             verticalAlign: VerticalAlignTable.CENTER,
             children: [
-              paragraph(`${project.evaluation?.readinessScore ?? 0}`, {
+              paragraph(`${report.overallScore}`, {
                 bold: true,
                 color: ratingTextColor(report.overallRating),
                 size: 54,
                 alignment: AlignmentType.CENTER,
                 spacingAfter: 20,
               }),
-              paragraph("Readiness Score", {
+              paragraph("Evaluator Score", {
                 bold: true,
                 color: ratingTextColor(report.overallRating),
                 size: 18,
@@ -1222,6 +1332,15 @@ export const exportEvaluationReportDocx = async (project: Project) => {
     spacer(220),
     executiveSummary,
     ...sectionTable("Proposal Information", ["Field", "Value"], report.proposalInfoRows, { widths: [32, 68] }),
+    ...sectionTable("Compliance Findings", ["Finding", "Status", "Detail", "Recommendation"], report.complianceFindingRows, {
+      widths: [24, 14, 32, 30],
+      centerColumns: [1],
+      ratingColumns: [1],
+    }),
+    ...sectionTable("Section-by-Section Scores", ["Section", "Score", "Strength", "Weakness", "Recommended Fix"], report.sectionScoreRows, {
+      widths: [18, 12, 23, 22, 25],
+      centerColumns: [1],
+    }),
     ...sectionTable("Mandatory Criteria Review", ["Mandatory Criteria", "Status", "Notes"], criteriaRowsToTableRows(report.mandatoryRows), {
       widths: [40, 18, 42],
       centerColumns: [1],
@@ -1297,8 +1416,12 @@ export const exportEvaluationReportDocx = async (project: Project) => {
     ...bulletList(report.keyStrengths),
     heading("Key Weaknesses / Risks", HeadingLevel.HEADING_2),
     ...bulletList(report.keyWeaknesses),
+    heading("High-Risk Issues", HeadingLevel.HEADING_2),
+    ...bulletList(report.highRiskIssues),
     heading("Recommended Next Steps", HeadingLevel.HEADING_2),
     ...bulletList(report.recommendedNextSteps),
+    heading("Recommended Rewrite Priorities", HeadingLevel.HEADING_2),
+    ...bulletList(report.rewritePriorities.slice(0, 8)),
     heading("Final Recommendation", HeadingLevel.HEADING_2, true),
     paragraph(`Decision: ${report.finalDecision}`, { bold: true, size: 24 }),
     paragraph(report.finalDecisionNote),
@@ -1734,7 +1857,7 @@ class PdfReportBuilder {
 
 export const exportEvaluationReportPdf = (project: Project) => {
   const report = buildEvaluationReport(project);
-  const score = project.evaluation?.readinessScore ?? 0;
+  const score = report.overallScore;
   const pdf = new PdfReportBuilder();
 
   pdf.drawCover(report, score);

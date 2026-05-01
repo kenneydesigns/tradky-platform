@@ -2,18 +2,134 @@ import type { DafAfwerxRubricCategoryKey } from "./data/dafAfwerxRubric";
 
 export type VolumeSectionKey =
   | "problemNeed"
+  | "objectivesSpecificAims"
   | "technicalApproach"
   | "innovation"
   | "workPlan"
+  | "expectedOutcomesDeliverables"
+  | "evaluationMetricsSuccessCriteria"
+  | "relatedWorkPriorRd"
   | "team"
+  | "facilitiesEquipmentResources"
   | "commercializationTransition"
+  | "customerDiscoveryEndUserValidation"
+  | "phaseIToPhaseIITransition"
   | "risks"
-  | "budgetNarrative";
+  | "securityComplianceCyber"
+  | "dataRightsIpStrategy"
+  | "budgetNarrative"
+  | "referencesCitations";
+
+export type VolumeSectionStatus = "required" | "optional" | "hidden";
+
+export type VolumeSectionStatusMap = Partial<Record<VolumeSectionKey, VolumeSectionStatus>>;
 
 export type VolumeSection = {
   key: VolumeSectionKey;
   title: string;
   content: string;
+};
+
+export type SolicitationProfileKey =
+  | "afwerxOpenTopic"
+  | "dafSpecificTopic"
+  | "armySbirSttr"
+  | "navySbirSttr"
+  | "darpaBaa"
+  | "doeSbirSttr"
+  | "nasaSbirSttr"
+  | "nihSbirSttr"
+  | "nsfSbirSttr"
+  | "customMultiAgency";
+
+export type EvaluatorCriterionKey =
+  | "solicitationFit"
+  | "technicalMerit"
+  | "feasibility"
+  | "innovation"
+  | "evidenceSupport"
+  | "metrics"
+  | "transitionPotential"
+  | "riskAwareness"
+  | "clarity";
+
+export type EvaluationWeights = Record<EvaluatorCriterionKey, number>;
+
+export type SubmissionRequirements = {
+  pageLimit: number;
+  wordLimit: number;
+  attachments: string[];
+  notes: string[];
+};
+
+export type SolicitationProfileConfig = {
+  key: SolicitationProfileKey;
+  label: string;
+  agency: string;
+  program: string;
+  requiredSections: VolumeSectionKey[];
+  optionalSections: VolumeSectionKey[];
+  hiddenSections: VolumeSectionKey[];
+  evaluationWeights: EvaluationWeights;
+  evaluationEmphasis: string[];
+  complianceChecks: string[];
+  requiredComplianceChecks: string[];
+  suggestedTone: string;
+  transitionEmphasis: string;
+  submissionRequirements: SubmissionRequirements;
+};
+
+export type ComplianceStatus = "Pass" | "Warning" | "High Risk" | "Non-Compliant";
+
+export type ComplianceFinding = {
+  id: string;
+  title: string;
+  status: ComplianceStatus;
+  detail: string;
+  recommendation: string;
+  relatedSections: VolumeSectionKey[];
+};
+
+export type EvaluatorCriterionScore = {
+  key: EvaluatorCriterionKey;
+  title: string;
+  score: number;
+  weight: number;
+  rationale: string;
+};
+
+export type SectionEvaluatorScore = {
+  key: VolumeSectionKey;
+  title: string;
+  score: number;
+  criteria: EvaluatorCriterionScore[];
+  majorStrengths: string[];
+  majorWeaknesses: string[];
+  recommendedFixes: string[];
+};
+
+export type ProposalEvaluatorScore = {
+  overallScore: number;
+  sectionScores: SectionEvaluatorScore[];
+  majorStrengths: string[];
+  majorWeaknesses: string[];
+  recommendedFixes: string[];
+};
+
+export type AlignmentStatus = "Aligned" | "Warning" | "High Risk";
+
+export type AlignmentFinding = {
+  id: string;
+  title: string;
+  status: AlignmentStatus;
+  detail: string;
+  recommendation: string;
+  relatedSections: VolumeSectionKey[];
+};
+
+export type ExportHistoryItem = {
+  type: "technical-volume-markdown" | "technical-volume-docx" | "evaluation-markdown" | "evaluation-docx" | "evaluation-pdf";
+  generatedAt: string;
 };
 
 export type DafAfwerxRubricScore = {
@@ -133,17 +249,31 @@ export type Project = {
   agency: string;
   program: string;
   topicId: string;
+  solicitationProfile: SolicitationProfileKey;
+  solicitationNumber: string;
   phase: string;
   dueDate: string;
+  releaseDate: string;
+  openDate: string;
+  closeDate: string;
+  submissionRequirements: SubmissionRequirements;
+  evaluationWeights: EvaluationWeights;
+  customSolicitationInstructions: string;
   createdAt: string;
   updatedAt: string;
   solicitationText: string;
   proposalText: string;
   evaluation: EvaluationResult | null;
   sections: VolumeSection[];
+  sectionStatuses: VolumeSectionStatusMap;
+  completenessScore: number;
+  evaluatorScore: number;
+  complianceFindings: ComplianceFinding[];
+  exportHistory: ExportHistoryItem[];
 };
 
-export type ProjectInput = Pick<Project, "name" | "agency" | "program" | "topicId" | "phase" | "dueDate">;
+export type ProjectInput = Pick<Project, "name" | "agency" | "program" | "topicId" | "phase" | "dueDate"> &
+  Partial<Pick<Project, "solicitationProfile" | "solicitationNumber">>;
 
 export type EvaluateInput = {
   project: Project;
@@ -167,6 +297,11 @@ export type SectionSuggestion = {
   evaluatorScore: number;
   summary: string;
   suggestions: string[];
+  reviewerFinding: string;
+  whyItMatters: string;
+  scoreImpact: string;
+  rewriteRecommendation: string;
+  improvedLanguageExample: string;
 };
 
 export type SectionSuggestionsInput = {

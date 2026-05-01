@@ -9,11 +9,14 @@ import {
   DraftSectionsResult,
   EvaluateInput,
   EvaluationResult,
+  Project,
   SectionSuggestionsInput,
   SectionSuggestionsResult,
   VolumeSection,
   VolumeSectionKey,
 } from "../types";
+import { getSolicitationProfile } from "../data/solicitationProfiles";
+import { getProjectVisibleSections } from "../utils/sectionVisibility";
 import { analyzeSectionStrength } from "../utils/sectionStrength";
 
 const sentence = (text: string, fallback: string) => {
@@ -234,35 +237,48 @@ const sourceSentence = (value: string, fallback: string) => sentence(value, fall
 const sectionDrafts = ({
   project,
 }: DraftSectionsInput): Record<VolumeSectionKey, string> => {
+  const profile = getSolicitationProfile(project.solicitationProfile);
   const problemSource = sourceSentence(
-    project.solicitationText,
-    `${project.agency} ${project.program} ${project.phase} topic ${project.topicId || "opportunity"}`,
+    [project.customSolicitationInstructions, project.solicitationText].filter(Boolean).join(" "),
+    `${profile.label} ${project.phase} topic ${project.topicId || project.solicitationNumber || "opportunity"}`,
   );
   const proposalSource = sourceSentence(project.proposalText, "the current concept notes and technical direction");
+  const existingSectionContext = sourceSentence(
+    project.sections
+      .filter((section) => section.content.trim())
+      .map((section) => `${section.title}: ${section.content}`)
+      .join(" "),
+    "the current section drafts",
+  );
   const transitionSource =
     project.evaluation?.transitionPotential.join(" ") ||
-    "the most likely mission owner, operating environment, and acquisition path";
+    profile.transitionEmphasis;
   const technicalActions =
     project.evaluation?.technicalMerit.join(" ") ||
     "the technical hypothesis, baseline performance, validation method, and measurable success criteria";
   const rewriteActions =
     project.evaluation?.rewriteActions.join(" ") ||
-    "reviewer-facing claims, evidence, milestones, and decision points";
+    profile.complianceChecks.join(" ");
 
   return {
     problemNeed: [
-      `The proposed ${project.phase} effort addresses a practical gap reflected in ${problemSource}.`,
-      `Current approaches do not give reviewers enough confidence that the mission need can be met with available cost, schedule, or performance constraints.`,
-      `This section should quantify the affected users, operational pain, performance shortfall, and urgency so the need is clear before the technical solution is introduced.`,
+      `The proposed ${project.phase} effort addresses a ${profile.label} need reflected in ${problemSource}.`,
+      `Based on the current proposal context, ${existingSectionContext}, the problem statement should make the affected end user, operational or public-benefit consequence, and current performance shortfall visible before the solution is introduced.`,
+      `To support evaluator scoring, this section should quantify the gap with baseline conditions, target improvement, urgency, and the reason this effort fits the selected solicitation profile.`,
+    ].join("\n\n"),
+    objectivesSpecificAims: [
+      `The ${project.phase} objectives should translate ${problemSource} into a small set of testable aims.`,
+      `Each aim should state what will be validated, why it matters for ${profile.label}, what evidence will be produced, and how success will be judged.`,
+      `A strong version uses measurable language rather than broad intent: aim, method, expected result, and decision criterion.`,
     ].join("\n\n"),
     technicalApproach: [
-      `Our technical approach turns ${proposalSource} into a testable development path.`,
-      `The work will define the system architecture, identify key technical assumptions, and validate feasibility through experiments tied to measurable thresholds.`,
-      `The draft should make ${technicalActions} explicit, then connect each claim to the data the team will collect during ${project.phase}.`,
+      `The technical approach turns ${proposalSource} into a testable development path that fits ${profile.label}.`,
+      `The work should define the system architecture, key technical assumptions, and validation method, then tie those choices to measurable thresholds rather than general feasibility language.`,
+      `Evaluator confidence will improve if the section makes ${technicalActions} explicit and connects each claim to the evidence the team will collect during ${project.phase}.`,
     ].join("\n\n"),
     innovation: [
-      `The innovation is the combination of method, implementation, and transition fit that improves on incumbent alternatives for this ${project.agency} use case.`,
-      `Rather than presenting novelty as a general claim, the section should compare the proposed approach against current products, research baselines, and internal workarounds.`,
+      `The innovation is the combination of method, implementation, and profile fit that improves on incumbent alternatives for this ${project.agency} use case.`,
+      `Rather than presenting novelty as a general claim, this section should compare the proposed approach against current products, research baselines, internal workarounds, and the constraints in the pasted solicitation instructions.`,
       `The strongest version will explain what is technically differentiated, why it is defensible, and what evidence would prove that differentiation during the award period.`,
     ].join("\n\n"),
     workPlan: [
@@ -270,25 +286,70 @@ const sectionDrafts = ({
       `Task 1 should refine requirements and success criteria; Task 2 should build or integrate the prototype elements; Task 3 should run validation experiments and analyze results; Task 4 should prepare the transition and Phase II evidence package.`,
       `Each task needs objectives, deliverables, responsible contributors, timing, and go/no-go criteria tied to ${rewriteActions}.`,
     ].join("\n\n"),
+    expectedOutcomesDeliverables: [
+      `The expected outcomes should identify what reviewers will receive or observe at the end of ${project.phase}.`,
+      `Describe concrete deliverables such as prototypes, data packages, reports, demonstrations, models, software, or validation artifacts, then connect each one to a decision the evaluator or customer can make.`,
+      `The strongest deliverables include acceptance criteria and explain how they support the next funding, research, or adoption decision.`,
+    ].join("\n\n"),
+    evaluationMetricsSuccessCriteria: [
+      `Evaluation metrics should define how ${project.name} will prove feasibility and value.`,
+      `For each core objective, state the baseline, target threshold, test method, data source, and pass/fail criterion that will be used during ${project.phase}.`,
+      `Metrics should be realistic for the award period while still strong enough to support ${profile.evaluationEmphasis.join(", ")}.`,
+    ].join("\n\n"),
+    relatedWorkPriorRd: [
+      `Related work and prior R&D should show that the team understands the technical baseline and is not starting from unsupported claims.`,
+      `Summarize relevant prior prototypes, data, studies, publications, customer pilots, or internal R&D, then state what gap remains for this effort to close.`,
+      `The section should make novelty and feasibility easier to score by comparing the proposed work with current alternatives and known limitations.`,
+    ].join("\n\n"),
     team: [
       `The team section should map each contributor to the work they directly own, including technical execution, customer discovery, commercialization, and transition planning.`,
       `For ${project.name}, reviewers should see who is accountable for architecture, experimentation, program management, security or regulatory constraints, and buyer engagement.`,
       `Any gaps should be addressed through advisors, subcontractors, hiring milestones, or partner commitments instead of left implicit.`,
     ].join("\n\n"),
+    facilitiesEquipmentResources: [
+      `Facilities, equipment, and resources should show that the team can execute the proposed work without hidden dependencies.`,
+      `Identify the labs, equipment, software, datasets, compute resources, testing environments, manufacturing access, or clinical/regulatory resources needed for each major task.`,
+      `For reviewer confidence, connect each resource to the work plan and explain whether it is already available, partner-provided, or still to be secured.`,
+    ].join("\n\n"),
     commercializationTransition: [
       `Commercialization and transition should describe the path from prototype evidence to adoption, not just a market opportunity.`,
-      `For this project, the draft should identify target users, first use cases, buyer type, procurement trigger, and the ${project.agency} stakeholder most likely to sponsor follow-on activity.`,
+      `For this ${profile.label} project, the draft should identify target users, first use cases, buyer type, procurement or market trigger, and the ${project.agency} stakeholder most likely to sponsor follow-on activity.`,
       `Use the evaluation guidance as source material: ${transitionSource}.`,
+    ].join("\n\n"),
+    customerDiscoveryEndUserValidation: [
+      `Customer discovery should document what the team has learned from end users, buyers, partners, or mission owners.`,
+      `Summarize interviews, letters, pilots, memoranda, feedback themes, workflow observations, or validation evidence, using bracketed placeholders where specific names or dates are still needed.`,
+      `The section should connect that evidence to the problem statement, product requirements, first use case, and commercialization or transition plan.`,
+    ].join("\n\n"),
+    phaseIToPhaseIITransition: [
+      `The Phase I to Phase II transition plan should explain how this effort converts feasibility evidence into a larger prototype or validation program.`,
+      `State the evidence package needed for the next phase, the technical maturity target, the expected Phase II scope, and the customer, agency, investor, or partner milestones that would support continuation.`,
+      `A strong plan makes the next decision obvious: what must be true, who cares, and what funding or adoption path follows.`,
     ].join("\n\n"),
     risks: [
       `The risk section should make the proposal feel controlled and executable.`,
       `List the highest technical, schedule, budget, regulatory, security, and adoption risks, then pair each with likelihood, impact, mitigation, fallback plan, and evidence the team will collect.`,
       `The strongest risks are specific to ${project.name} and tied to task-level decision points, not generic project management language.`,
     ].join("\n\n"),
+    securityComplianceCyber: [
+      `Security, compliance, and cyber content should identify constraints that could affect execution, approval, deployment, or data handling.`,
+      `Address applicable standards or review paths such as CMMC, NIST controls, ITAR/export, HIPAA, human subjects, privacy, safety, cybersecurity testing, or agency-specific authorization requirements where relevant.`,
+      `For each applicable constraint, state the mitigation plan, responsible owner, and evidence needed to show the proposal can proceed compliantly.`,
+    ].join("\n\n"),
+    dataRightsIpStrategy: [
+      `The data rights and IP strategy should explain what the company owns, what background IP is being used, and how the proposed work will protect defensible advantage.`,
+      `Address patents, trade secrets, licenses, government purpose rights, deliverable data, third-party dependencies, and freedom-to-operate assumptions where relevant.`,
+      `The section should make commercialization and government adoption easier to evaluate by reducing ambiguity around ownership and rights.`,
+    ].join("\n\n"),
     budgetNarrative: [
       `The budget narrative should explain why each cost is necessary to complete the technical work plan.`,
       `Labor should be connected to task ownership, materials and software to prototype or test needs, travel to customer or transition activities, and subcontractors to specialized capabilities the core team does not provide.`,
       `Close the section by tying cost realism to expected deliverables and the evidence package needed for the next funding or adoption decision.`,
+    ].join("\n\n"),
+    referencesCitations: [
+      `References and citations should give reviewers a concise evidence trail for technical, scientific, regulatory, market, and prior-art claims.`,
+      `List sources that support the baseline, state of the art, standards, market facts, clinical or scientific evidence, and any cited performance claims.`,
+      `Use a consistent citation format and add bracketed placeholders where a source must still be verified before submission.`,
     ].join("\n\n"),
   };
 };
@@ -297,7 +358,7 @@ export const generateMockDraftSections = async (input: DraftSectionsInput): Prom
   await new Promise((resolve) => window.setTimeout(resolve, 700));
 
   const drafts = sectionDrafts(input);
-  const selectedKeys = new Set(input.sectionKeys ?? input.project.sections.map((section) => section.key));
+  const selectedKeys = new Set(input.sectionKeys ?? getProjectVisibleSections(input.project).map((section) => section.key));
 
   return {
     generatedAt: new Date().toISOString(),
@@ -316,6 +377,11 @@ const sectionSuggestionFallbacks: Record<VolumeSectionKey, string[]> = {
     "Lacks a specific end-user use case with clear operational application and adequacy of effort.",
     "Breadth of Applicability is weak unless the draft shows affected units, platforms, bases, MAJCOMs, or Field Commands.",
   ],
+  objectivesSpecificAims: [
+    "Objectives are not yet testable enough for reviewers to judge feasibility.",
+    "Specific aims need a clear method, expected result, and success threshold.",
+    "Aims should map directly to the solicitation criteria and phase scope.",
+  ],
   technicalApproach: [
     "Fails to demonstrate Technical Approach Soundness and Merit with a logical method tied to stated objectives.",
     "Lacks relevant technical details, tests, thresholds, or success criteria that support a higher Technical Merit score.",
@@ -331,25 +397,70 @@ const sectionSuggestionFallbacks: Record<VolumeSectionKey, string[]> = {
     "Milestones should be consistent with any customer memo, transition strategy, and proposed technical effort.",
     "Risk retirement should be visible in the work plan so evaluators can judge whether residual risk is acceptable.",
   ],
+  expectedOutcomesDeliverables: [
+    "Deliverables are score-limited unless reviewers can see concrete outputs.",
+    "Expected outcomes should be paired with acceptance criteria and decision value.",
+    "The section should explain how each deliverable supports the next award, adoption, or research decision.",
+  ],
+  evaluationMetricsSuccessCriteria: [
+    "Metrics are weak unless baseline, target, threshold, and test method are explicit.",
+    "Success criteria should be concrete enough to support pass/fail evaluator judgment.",
+    "Measurement methods need to tie back to the technical objectives and deliverables.",
+  ],
+  relatedWorkPriorRd: [
+    "Prior R&D is underdeveloped unless it explains what has already been proven.",
+    "Related work should compare the proposed approach against current alternatives and limitations.",
+    "Preliminary evidence should be connected to feasibility and novelty claims.",
+  ],
   team: [
     "Team Qualifications score is limited unless relevant experience, expertise, facilities, and equipment are tied to the work.",
     "Does not demonstrate the team's ability to perform R&D and execute the proposed approach.",
     "Uncovered capabilities need an advisor, partner, subcontractor, facility, or hiring plan instead of an implicit gap.",
+  ],
+  facilitiesEquipmentResources: [
+    "Facilities and equipment are weak unless resources are tied to specific work-plan tasks.",
+    "Reviewer confidence is limited if access to critical labs, datasets, testbeds, or tools is unclear.",
+    "Resource gaps should be addressed through partners, subcontractors, or acquisition milestones.",
   ],
   commercializationTransition: [
     "Fails to demonstrate Commercialization through market/revenue potential, business plan, and defense/private interest.",
     "Defense customer interest is score-limited unless the customer, available funds, investor funding, or non-government revenue are clear.",
     "Transition strategy needs enough specificity to support the Phase II CM/supporting-document criteria when applicable.",
   ],
+  customerDiscoveryEndUserValidation: [
+    "Customer discovery is weak unless interviews, feedback, letters, pilots, or mission-owner evidence are visible.",
+    "End-user validation should explain how the use case and requirements were confirmed.",
+    "Reviewer confidence improves when customer evidence connects to transition or commercialization strategy.",
+  ],
+  phaseIToPhaseIITransition: [
+    "The next-phase plan is vague unless Phase I evidence is tied to Phase II scope.",
+    "Transition readiness should identify milestones, decision gates, and follow-on stakeholders.",
+    "The proposal should explain what must be proven before the next funding or adoption decision.",
+  ],
   risks: [
     "Level of Risk score is limited unless major risks are identified and mitigated.",
     "Residual risks should be framed as acceptable for an SBIR/STTR R&D effort, or explicitly reduced by mitigation evidence.",
     "Risk mitigation should tie to work plan tasks, tests, and decision gates.",
   ],
+  securityComplianceCyber: [
+    "Compliance risk is weak unless applicable standards, approvals, and owners are named.",
+    "Security or cyber constraints should be tied to the product, data, deployment, or testing environment.",
+    "Human subjects, privacy, export, or agency authorization issues need a plan where applicable.",
+  ],
+  dataRightsIpStrategy: [
+    "IP strategy is limited unless ownership, protection, and defensibility are explicit.",
+    "Data rights should clarify deliverables, government rights, licenses, and third-party dependencies.",
+    "Reviewer confidence improves when rights strategy supports both adoption and commercialization.",
+  ],
   budgetNarrative: [
     "Cost Volume logic is weak unless materials/equipment are appropriate for the proposed technical effort.",
     "Personnel, labor skill mix, and hours need to map to the proposed technical effort.",
     "Travel, specialized efforts, subcontractors, and consultants need clear relevance or should be marked not applicable.",
+  ],
+  referencesCitations: [
+    "References are weak unless they support technical, scientific, market, or regulatory claims.",
+    "Citations should be specific enough for reviewers to verify key assumptions.",
+    "Placeholder citations should be resolved before submission.",
   ],
 };
 
@@ -400,13 +511,55 @@ const scoreEvaluatorSection = (section: VolumeSection, completenessScore: number
   return clampScore(10 + Math.min(32, completenessScore * 0.32) + signalScore);
 };
 
-const mockSuggestionForSection = (section: VolumeSection) => {
+const exampleImprovedLanguage: Record<VolumeSectionKey, string> = {
+  problemNeed:
+    "The target [agency/end user] currently experiences [measurable gap], creating [mission or public-benefit consequence]; success for this effort is defined as [target threshold] in [operational context].",
+  objectivesSpecificAims:
+    "Aim [number] will validate [technical hypothesis] by [method], with success defined as [metric/threshold] and the resulting evidence used to decide [next step].",
+  technicalApproach:
+    "During Phase I, we will validate [technical hypothesis] by building [prototype/test article] and measuring [metric] against a baseline of [baseline] with success defined as [threshold].",
+  innovation:
+    "Unlike [incumbent approach], the proposed method [specific differentiation], which matters because it enables [measurable advantage] under [agency/use-case constraint].",
+  workPlan:
+    "Task [number] will produce [deliverable] by [date/month], with go/no-go success defined as [metric/threshold] and owned by [role].",
+  expectedOutcomesDeliverables:
+    "By the end of [phase], the team will deliver [artifact], accepted when [metric/threshold] demonstrates [decision-useful outcome].",
+  evaluationMetricsSuccessCriteria:
+    "Success will be measured against a baseline of [baseline] using [test method], with a target of [threshold] required to proceed to [next decision].",
+  relatedWorkPriorRd:
+    "Prior work demonstrated [result/evidence], but [gap] remains; this effort advances the state of the art by [specific technical step].",
+  team:
+    "[Named role] will lead [technical task] based on [relevant experience], while [partner/advisor] covers [gap] needed to execute [work-plan element].",
+  facilitiesEquipmentResources:
+    "[Facility/equipment/resource] is available through [owner/partner] and will be used for [task/test], enabling [specific evidence or deliverable].",
+  commercializationTransition:
+    "The first transition target is [customer/user], who would adopt the result through [procurement/infusion/market path] after [evidence milestone] demonstrates [value metric].",
+  customerDiscoveryEndUserValidation:
+    "[Number] interviews with [customer/end-user segment] validated [pain point/use case], leading to [requirement] and support for [pilot/adoption step].",
+  phaseIToPhaseIITransition:
+    "Phase I will produce [evidence package]; Phase II will use that evidence to build [prototype/scale-up] for [customer/market] by [milestone].",
+  risks:
+    "If [risk] occurs, the team will mitigate it by [action], fall back to [alternative], and use [test/metric] to determine whether residual risk is acceptable.",
+  securityComplianceCyber:
+    "[Compliance/security requirement] applies because [reason]; [owner] will address it through [control/protocol/review] before [deployment/test milestone].",
+  dataRightsIpStrategy:
+    "The company will protect [background/foreground IP] through [patent/trade secret/license] while delivering [data/software] under [rights approach].",
+  budgetNarrative:
+    "The requested [cost category] supports Task [number] by enabling [technical activity/deliverable], making the cost necessary for [validation or transition evidence].",
+  referencesCitations:
+    "[Citation/source] supports the claim that [baseline/state of art/standard], which justifies [technical choice or performance target].",
+};
+
+const mockSuggestionForSection = (section: VolumeSection, project: Project) => {
+  const profile = getSolicitationProfile(project.solicitationProfile);
   const strength = analyzeSectionStrength(section);
   const evaluatorScore = scoreEvaluatorSection(section, strength.score);
   const missingSignalSuggestions = strength.missingSignals.map(
     (signal) => signalRiskFindings[signal] ?? `Reviewer cannot verify ${signal}; tie it to criteria, evidence, and metrics.`,
   );
   const suggestions = [...missingSignalSuggestions, ...sectionSuggestionFallbacks[section.key]].slice(0, 4);
+  const leadFinding = suggestions[0] ?? "Reviewer cannot yet verify solicitation fit, technical merit, or transition value.";
+  const lowestSignal = strength.missingSignals[0] ?? "the highest-value scoring evidence";
 
   return {
     key: section.key,
@@ -417,6 +570,14 @@ const mockSuggestionForSection = (section: VolumeSection) => {
         ? "Evaluator confidence is forming; the remaining gains come from sharper criteria mapping and verifiable evidence."
         : "Evaluator confidence is limited because the draft does not yet prove fit, feasibility, transition, or measurable impact.",
     suggestions,
+    reviewerFinding: leadFinding,
+    whyItMatters: `For ${profile.label}, this matters because evaluators must see how the section supports the required criteria and compliance checks without inferring missing facts.`,
+    scoreImpact:
+      evaluatorScore >= 75
+        ? "Likely modest score lift if the recommendation is addressed with specific evidence."
+        : "Likely caps the section score until the missing evidence is added.",
+    rewriteRecommendation: `Rewrite the section around ${lowestSignal}, then connect the claim to a measurable outcome, supporting evidence, and the selected solicitation profile.`,
+    improvedLanguageExample: exampleImprovedLanguage[section.key],
   };
 };
 
@@ -426,10 +587,10 @@ export const generateMockSectionSuggestions = async ({
 }: SectionSuggestionsInput): Promise<SectionSuggestionsResult> => {
   await new Promise((resolve) => window.setTimeout(resolve, 650));
 
-  const selectedKeys = new Set(sectionKeys ?? project.sections.map((section) => section.key));
+  const selectedKeys = new Set(sectionKeys ?? getProjectVisibleSections(project).map((section) => section.key));
 
   return {
     generatedAt: new Date().toISOString(),
-    sections: project.sections.filter((section) => selectedKeys.has(section.key)).map(mockSuggestionForSection),
+    sections: project.sections.filter((section) => selectedKeys.has(section.key)).map((section) => mockSuggestionForSection(section, project)),
   };
 };

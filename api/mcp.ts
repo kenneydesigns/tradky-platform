@@ -1,6 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod/v4";
+import { getSectionStatusesForProfile } from "../src/data/solicitationProfiles";
+import { defaultVolumeSections, VOLUME_SECTION_KEYS } from "../src/data/volumeSections";
 import { draftVolumeSectionsWithOpenAI } from "./draft-sections.js";
 import { evaluateProposalWithOpenAI } from "./evaluate.js";
 import { suggestVolumeSectionsWithOpenAI } from "./section-suggestions.js";
@@ -30,21 +32,12 @@ type ApiResponse = {
   status: (statusCode: number) => ApiResponse;
 };
 
-const SECTION_DEFINITIONS: Array<Pick<VolumeSection, "key" | "title">> = [
-  { key: "problemNeed", title: "Problem / Need" },
-  { key: "technicalApproach", title: "Technical Approach" },
-  { key: "innovation", title: "Innovation" },
-  { key: "workPlan", title: "Work Plan" },
-  { key: "team", title: "Team" },
-  { key: "commercializationTransition", title: "Commercialization / Transition" },
-  { key: "risks", title: "Risks" },
-  { key: "budgetNarrative", title: "Budget Narrative" },
-];
+const SECTION_DEFINITIONS: Array<Pick<VolumeSection, "key" | "title">> = defaultVolumeSections.map(({ key, title }) => ({
+  key,
+  title,
+}));
 
-const SECTION_KEYS = SECTION_DEFINITIONS.map((section) => section.key) as [
-  VolumeSectionKey,
-  ...VolumeSectionKey[],
-];
+const SECTION_KEYS = VOLUME_SECTION_KEYS as [VolumeSectionKey, ...VolumeSectionKey[]];
 
 const sectionKeySchema = z.enum(SECTION_KEYS);
 const currentSectionSchema = z.object({
@@ -103,9 +96,14 @@ const list = (items: string[] | undefined, fallback: string) => {
 const summarizeEvaluation = (evaluation: EvaluationResult) =>
   [
     `Readiness score: ${evaluation.readinessScore}/100.`,
+    evaluation.multiAgencyEvaluation
+      ? `Agency: ${evaluation.multiAgencyEvaluation.agency_detected}. Fit: ${evaluation.multiAgencyEvaluation.fit_score}/100. Quality: ${evaluation.multiAgencyEvaluation.quality_score}/100.`
+      : "",
     "Priority rewrite actions:",
     list(evaluation.rewriteActions, "Review the structured evaluation for priority actions."),
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 
 const normalizeString = (value: string | undefined, fallback: string) => {
   const cleaned = value?.trim();
@@ -172,14 +170,42 @@ const makeProject = ({
     agency: normalizeString(agency, "DAF/AFWERX"),
     program: normalizeString(program, "SBIR/STTR"),
     topicId: normalizeString(topic_id, "Unspecified topic"),
+    solicitationProfile: "afwerxOpenTopic",
+    solicitationNumber: normalizeString(topic_id, "Unspecified topic"),
     phase: normalizeString(phase, "Phase I"),
     dueDate: normalizeString(due_date, ""),
+    releaseDate: "",
+    openDate: "",
+    closeDate: normalizeString(due_date, ""),
+    submissionRequirements: {
+      pageLimit: 15,
+      wordLimit: 7500,
+      attachments: [],
+      notes: [],
+    },
+    evaluationWeights: {
+      solicitationFit: 13,
+      technicalMerit: 18,
+      feasibility: 13,
+      innovation: 11,
+      evidenceSupport: 11,
+      metrics: 10,
+      transitionPotential: 12,
+      riskAwareness: 6,
+      clarity: 6,
+    },
+    customSolicitationInstructions: "",
     createdAt: now,
     updatedAt: now,
     solicitationText: solicitation_text,
     proposalText: proposal_text,
     evaluation: evaluation ?? null,
     sections: sectionsFromInput(current_sections),
+    sectionStatuses: getSectionStatusesForProfile("afwerxOpenTopic"),
+    completenessScore: 0,
+    evaluatorScore: 0,
+    complianceFindings: [],
+    exportHistory: [],
   };
 };
 
@@ -194,7 +220,7 @@ const createServer = () => {
     {
       title: "Evaluate Proposal",
       description:
-        "Evaluate an SBIR/STTR proposal against the DAF/AFWERX rubric and return readiness, rubric scores, gaps, cost-volume checks, and rewrite actions.",
+        "Evaluate an SBIR/STTR proposal against the detected agency rubric and return fit, quality, evidence-based criterion scores, gaps, and priority actions.",
       inputSchema: {
         ...baseProjectShape,
         proposal_text: proposalTextSchema,
@@ -222,7 +248,7 @@ const createServer = () => {
     {
       title: "Analyze Topic",
       description:
-        "Analyze an SBIR/STTR topic or solicitation and identify evidence needed for a stronger DAF/AFWERX proposal.",
+        "Analyze an SBIR/STTR topic or solicitation, detect the likely agency rubric, and identify evidence needed for a stronger proposal.",
       inputSchema: {
         ...baseProjectShape,
         concept_text: z
@@ -250,6 +276,9 @@ const createServer = () => {
       const topicAnalysis = {
         topicId: project.topicId,
         phase: project.phase,
+        agencyDetected: evaluation.multiAgencyEvaluation?.agency_detected,
+        fitScore: evaluation.multiAgencyEvaluation?.fit_score,
+        qualityScore: evaluation.multiAgencyEvaluation?.quality_score,
         readinessScore: evaluation.readinessScore,
         evidenceToGather: evaluation.complianceGaps,
         technicalFocus: evaluation.technicalMerit,
@@ -306,7 +335,7 @@ const createServer = () => {
     {
       title: "Generate Recommendations",
       description:
-        "Generate evaluator-style SBIR/STTR proposal recommendations, with optional section-level suggestions when current sections are provided.",
+        "Generate multi-agency SBIR/STTR evaluator recommendations, with optional section-level suggestions when current sections are provided.",
       inputSchema: {
         ...baseProjectShape,
         proposal_text: proposalTextSchema,
@@ -347,6 +376,9 @@ const createServer = () => {
 
       return textResult(summarizeEvaluation(evaluation), {
         recommendations: {
+          agencyDetected: evaluation.multiAgencyEvaluation?.agency_detected,
+          fitScore: evaluation.multiAgencyEvaluation?.fit_score,
+          qualityScore: evaluation.multiAgencyEvaluation?.quality_score,
           readinessScore: evaluation.readinessScore,
           strengths: evaluation.strengths,
           weaknesses: evaluation.weaknesses,

@@ -1,9 +1,39 @@
-import { useMemo, useState } from "react";
-import { Download, FileDown, Gauge, Lightbulb, WandSparkles } from "lucide-react";
-import { Project, SectionSuggestion, VolumeSection, VolumeSectionKey } from "../types";
+import { useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  Download,
+  FileDown,
+  Gauge,
+  Lightbulb,
+  ScanSearch,
+  ShieldCheck,
+  SlidersHorizontal,
+  WandSparkles,
+} from "lucide-react";
+import {
+  ComplianceStatus,
+  Project,
+  SectionSuggestion,
+  SolicitationProfileKey,
+  VolumeSection,
+  VolumeSectionKey,
+  VolumeSectionStatus,
+} from "../types";
+import { SOLICITATION_PROFILE_OPTIONS, getSectionStatusesForProfile, getSolicitationProfile } from "../data/solicitationProfiles";
 import { draftVolumeSections, suggestVolumeSections } from "../services/aiClient";
-import { exportDocx, exportMarkdown } from "../utils/exporters";
+import { exportDocx, exportEvaluationReportDocx, exportEvaluationReportMarkdown, exportMarkdown } from "../utils/exporters";
+import { analyzeCrossSectionAlignment } from "../utils/alignmentChecker";
+import { analyzeProposalCompliance } from "../utils/complianceChecker";
+import { scoreProposalEvaluator } from "../utils/evaluatorScoring";
 import { analyzeSectionStrength, SectionStrength } from "../utils/sectionStrength";
+import {
+  getProjectOptionalSectionKeys,
+  getProjectRequiredSectionKeys,
+  getProjectSectionStatuses,
+  getProjectVisibleSections,
+} from "../utils/sectionVisibility";
 
 type VolumeBuilderProps = {
   project: Project;
@@ -25,6 +55,13 @@ const evaluatorScoreLabel = (score: number) => {
   return "Low evaluator confidence";
 };
 
+const complianceTone = (status: ComplianceStatus) => {
+  if (status === "Pass") return "pass";
+  if (status === "Warning") return "warning";
+  if (status === "High Risk") return "risk";
+  return "non-compliant";
+};
+
 const createCompletenessMap = (sections: VolumeSection[]) =>
   sections.reduce(
     (map, section) => ({
@@ -34,27 +71,78 @@ const createCompletenessMap = (sections: VolumeSection[]) =>
     {} as Record<VolumeSectionKey, SectionStrength>,
   );
 
+const averageScore = (scores: number[]) => {
+  if (!scores.length) return 0;
+  return Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length);
+};
+
+const sectionStatusLabel = (status: VolumeSectionStatus) => {
+  if (status === "required") return "Required";
+  if (status === "optional") return "Optional";
+  return "Hidden";
+};
+
+const buildProjectAssessments = (project: Project) => {
+  const completenessMap = createCompletenessMap(project.sections);
+  const completenessKeys = getProjectRequiredSectionKeys(project);
+  const scoredKeys = completenessKeys.length ? completenessKeys : getProjectVisibleSections(project).map((section) => section.key);
+  const requiredCompleteness = scoredKeys.map((key) => completenessMap[key]?.score ?? 0);
+  const evaluatorAssessment = scoreProposalEvaluator(project);
+  const compliance = analyzeProposalCompliance(project);
+
+  return {
+    ...project,
+    completenessScore: averageScore(requiredCompleteness),
+    evaluatorScore: evaluatorAssessment.overallScore,
+    complianceFindings: compliance.findings,
+  };
+};
+
 export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) => {
   const [activeKey, setActiveKey] = useState<VolumeSectionKey>(project.sections[0].key);
   const [draftingTarget, setDraftingTarget] = useState<"empty" | VolumeSectionKey | null>(null);
   const [suggestingTarget, setSuggestingTarget] = useState<"all" | VolumeSectionKey | null>(null);
   const [suggestionsByKey, setSuggestionsByKey] = useState<Partial<Record<VolumeSectionKey, SectionSuggestion>>>({});
+  const [includeHiddenSavedSections, setIncludeHiddenSavedSections] = useState(false);
   const [draftError, setDraftError] = useState("");
   const [suggestionError, setSuggestionError] = useState("");
-  const activeSection = project.sections.find((section) => section.key === activeKey) ?? project.sections[0];
+  const profile = useMemo(() => getSolicitationProfile(project.solicitationProfile), [project.solicitationProfile]);
+  const sectionStatuses = useMemo(() => getProjectSectionStatuses(project), [project]);
+  const visibleSections = useMemo(() => getProjectVisibleSections(project), [project]);
+  const requiredSectionKeys = useMemo(() => getProjectRequiredSectionKeys(project), [project]);
+  const optionalSectionKeys = useMemo(() => getProjectOptionalSectionKeys(project), [project]);
+  const hiddenSectionCount = project.sections.length - visibleSections.length;
+  const hiddenSavedSectionCount = project.sections.filter(
+    (section) => sectionStatuses[section.key] === "hidden" && section.content.trim(),
+  ).length;
+  const activeSection = visibleSections.find((section) => section.key === activeKey) ?? visibleSections[0] ?? project.sections[0];
   const activeSuggestion = suggestionsByKey[activeSection.key];
+  const compliance = useMemo(() => analyzeProposalCompliance(project), [project]);
+  const evaluatorAssessment = useMemo(() => scoreProposalEvaluator(project), [project]);
+  const alignmentFindings = useMemo(() => analyzeCrossSectionAlignment(project), [project]);
+  const activeSectionScore = evaluatorAssessment.sectionScores.find((section) => section.key === activeSection.key);
 
   const totalWords = useMemo(
-    () => project.sections.reduce((sum, section) => sum + countWords(section.content), 0),
-    [project.sections],
+    () => visibleSections.reduce((sum, section) => sum + countWords(section.content), 0),
+    [visibleSections],
   );
   const sectionCompleteness = useMemo(() => createCompletenessMap(project.sections), [project.sections]);
-  const evaluatorScore = activeSuggestion?.evaluatorScore;
+  const evaluatorScore = activeSuggestion?.evaluatorScore ?? activeSectionScore?.score;
   const displayEvaluatorScore = evaluatorScore ?? 0;
   const emptySectionKeys = useMemo(
-    () => project.sections.filter((section) => !section.content.trim()).map((section) => section.key),
-    [project.sections],
+    () => visibleSections.filter((section) => !section.content.trim()).map((section) => section.key),
+    [visibleSections],
   );
+
+  useEffect(() => {
+    if (visibleSections.some((section) => section.key === activeKey)) return;
+    const nextActiveKey = visibleSections[0]?.key ?? project.sections[0]?.key;
+    if (nextActiveKey) setActiveKey(nextActiveKey);
+  }, [activeKey, project.sections, visibleSections]);
+
+  const commitProject = (nextProject: Project) => {
+    onUpdateProject(buildProjectAssessments(nextProject));
+  };
 
   const clearSuggestions = (sectionKeys: VolumeSectionKey[]) => {
     setSuggestionsByKey((current) => {
@@ -68,7 +156,7 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
 
   const updateSection = (section: VolumeSection, content: string) => {
     clearSuggestions([section.key]);
-    onUpdateProject({
+    commitProject({
       ...project,
       sections: project.sections.map((existing) => (existing.key === section.key ? { ...existing, content } : existing)),
     });
@@ -78,7 +166,7 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
     const draftByKey = new Map(draftedSections.map((section) => [section.key, section.content]));
     clearSuggestions(draftedSections.map((section) => section.key));
 
-    onUpdateProject({
+    commitProject({
       ...project,
       sections: project.sections.map((section) => ({
         ...section,
@@ -132,7 +220,7 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
 
   const refreshAllSuggestions = () => {
     void requestSuggestions(
-      project.sections.map((section) => section.key),
+      visibleSections.map((section) => section.key),
       "all",
     );
   };
@@ -141,12 +229,65 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
     void requestSuggestions([activeSection.key], activeSection.key);
   };
 
+  const updateProfile = (solicitationProfile: SolicitationProfileKey) => {
+    const nextProfile = getSolicitationProfile(solicitationProfile);
+    const nextStatuses =
+      nextProfile.key === "customMultiAgency"
+        ? getSectionStatusesForProfile(nextProfile.key, project.sectionStatuses)
+        : getSectionStatusesForProfile(nextProfile.key);
+
+    commitProject({
+      ...project,
+      solicitationProfile: nextProfile.key,
+      agency: nextProfile.agency,
+      program: nextProfile.program,
+      submissionRequirements: nextProfile.submissionRequirements,
+      evaluationWeights: nextProfile.evaluationWeights,
+      sectionStatuses: nextStatuses,
+    });
+  };
+
+  const updateSectionStatus = (sectionKey: VolumeSectionKey, status: VolumeSectionStatus) => {
+    const nextStatuses = {
+      ...sectionStatuses,
+      [sectionKey]: status,
+    };
+    const hasVisibleSection = project.sections.some((section) => nextStatuses[section.key] !== "hidden");
+
+    if (!hasVisibleSection) return;
+
+    commitProject({
+      ...project,
+      sectionStatuses: nextStatuses,
+    });
+  };
+
+  const updateProjectField = <Key extends keyof Project>(key: Key, value: Project[Key]) => {
+    commitProject({
+      ...project,
+      [key]: value,
+    });
+  };
+
+  const updateSubmissionNumber = (value: number, key: "pageLimit" | "wordLimit") => {
+    commitProject({
+      ...project,
+      submissionRequirements: {
+        ...project.submissionRequirements,
+        [key]: Number.isFinite(value) && value >= 0 ? value : 0,
+      },
+    });
+  };
+
   return (
     <div className="builder">
       <header className="builder-toolbar">
         <div>
           <p className="eyebrow">Technical volume builder</p>
-          <h2>{totalWords} words across 8 sections</h2>
+          <h2>
+            {totalWords} words across {visibleSections.length} visible sections
+          </h2>
+          {hiddenSectionCount ? <small>{hiddenSectionCount} profile-hidden sections remain saved.</small> : null}
         </div>
         <div className="toolbar-actions">
           <button
@@ -162,13 +303,30 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
             <Lightbulb size={17} />
             {suggestingTarget === "all" ? "Reviewing..." : "Evaluator Suggestions"}
           </button>
-          <button className="button" type="button" onClick={() => exportMarkdown(project)}>
+          <label className="export-hidden-toggle">
+            <input
+              type="checkbox"
+              checked={includeHiddenSavedSections}
+              disabled={!hiddenSavedSectionCount}
+              onChange={(event) => setIncludeHiddenSavedSections(event.target.checked)}
+            />
+            Include hidden saved sections
+          </label>
+          <button
+            className="button"
+            type="button"
+            onClick={() => exportMarkdown(project, { includeHiddenSavedSections })}
+          >
             <Download size={17} />
-            Markdown
+            Volume MD
           </button>
-          <button className="button primary" type="button" onClick={() => void exportDocx(project)}>
+          <button
+            className="button primary"
+            type="button"
+            onClick={() => void exportDocx(project, { includeHiddenSavedSections })}
+          >
             <FileDown size={17} />
-            DOCX
+            Volume DOCX
           </button>
         </div>
       </header>
@@ -176,14 +334,309 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
       {draftError ? <div className="error-banner">{draftError}</div> : null}
       {suggestionError ? <div className="error-banner">{suggestionError}</div> : null}
 
+      <details className="builder-panel solicitation-panel" open>
+        <summary>
+          <span>
+            <SlidersHorizontal size={18} />
+            Proposal profile
+          </span>
+          <strong>{profile.label}</strong>
+          <ChevronDown size={18} />
+        </summary>
+        <div className="profile-grid">
+          <label>
+            Proposal profile
+            <select
+              value={project.solicitationProfile}
+              onChange={(event) => updateProfile(event.target.value as SolicitationProfileKey)}
+            >
+              {SOLICITATION_PROFILE_OPTIONS.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Solicitation number
+            <input
+              value={project.solicitationNumber}
+              onChange={(event) => updateProjectField("solicitationNumber", event.target.value)}
+              placeholder="AF26.1-123 / BAA number"
+            />
+          </label>
+
+          <label>
+            Agency
+            <input value={project.agency} onChange={(event) => updateProjectField("agency", event.target.value)} />
+          </label>
+
+          <label>
+            Release date
+            <input type="date" value={project.releaseDate} onChange={(event) => updateProjectField("releaseDate", event.target.value)} />
+          </label>
+
+          <label>
+            Open date
+            <input type="date" value={project.openDate} onChange={(event) => updateProjectField("openDate", event.target.value)} />
+          </label>
+
+          <label>
+            Close date
+            <input
+              type="date"
+              value={project.closeDate}
+              onChange={(event) => updateProjectField("closeDate", event.target.value)}
+            />
+          </label>
+
+          <label>
+            Page limit
+            <input
+              type="number"
+              min={0}
+              value={project.submissionRequirements.pageLimit}
+              onChange={(event) => updateSubmissionNumber(Number(event.target.value), "pageLimit")}
+            />
+          </label>
+
+          <label>
+            Word warning
+            <input
+              type="number"
+              min={0}
+              value={project.submissionRequirements.wordLimit}
+              onChange={(event) => updateSubmissionNumber(Number(event.target.value), "wordLimit")}
+            />
+          </label>
+        </div>
+        <div className="profile-notes-grid">
+          <section>
+            <h3>Section profile</h3>
+            <p>{profile.suggestedTone}</p>
+            <p>{profile.transitionEmphasis}</p>
+            <h4>Required</h4>
+            <div className="profile-chip-list">
+              {requiredSectionKeys.map((key) => (
+                <span key={key}>{project.sections.find((section) => section.key === key)?.title ?? key}</span>
+              ))}
+            </div>
+            <h4>Optional</h4>
+            <div className="profile-chip-list">
+              {optionalSectionKeys.map((key) => (
+                <span key={key}>{project.sections.find((section) => section.key === key)?.title ?? key}</span>
+              ))}
+            </div>
+          </section>
+          <section>
+            <h3>Evaluation emphasis</h3>
+            <ul className="compact-list">
+              {profile.evaluationEmphasis.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+            <h3>Compliance checks</h3>
+            <ul className="compact-list">
+              {profile.complianceChecks.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </section>
+          <section>
+            <h3>Evaluation weights</h3>
+            <div className="weight-grid">
+              {Object.entries(project.evaluationWeights).map(([key, value]) => (
+                <span key={key}>
+                  {key.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`)} <strong>{value}%</strong>
+                </span>
+              ))}
+            </div>
+          </section>
+          <label className="custom-instructions">
+            Custom solicitation instructions
+            <textarea
+              value={project.customSolicitationInstructions}
+              onChange={(event) => updateProjectField("customSolicitationInstructions", event.target.value)}
+              placeholder="Paste profile-specific instructions, submission rules, evaluation criteria, or agency notes."
+            />
+          </label>
+        </div>
+        {profile.key === "customMultiAgency" ? (
+          <section className="custom-section-controls" aria-label="Custom section controls">
+            <div>
+              <h3>Custom section visibility</h3>
+              <p>Set each saved section as required, optional, or hidden for this project.</p>
+            </div>
+            <div className="custom-section-grid">
+              {project.sections.map((section) => {
+                const status = sectionStatuses[section.key];
+                const disableHidden = status !== "hidden" && visibleSections.length <= 1;
+
+                return (
+                  <article key={section.key}>
+                    <div>
+                      <strong>{section.title}</strong>
+                      <small>{countWords(section.content)} saved words</small>
+                    </div>
+                    <div className="segmented-control" aria-label={`${section.title} status`}>
+                      {(["required", "optional", "hidden"] as VolumeSectionStatus[]).map((nextStatus) => (
+                        <button
+                          className={status === nextStatus ? "active" : ""}
+                          type="button"
+                          key={nextStatus}
+                          disabled={nextStatus === "hidden" && disableHidden}
+                          aria-pressed={status === nextStatus}
+                          onClick={() => updateSectionStatus(section.key, nextStatus)}
+                        >
+                          {sectionStatusLabel(nextStatus)}
+                        </button>
+                      ))}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
+      </details>
+
+      <div className="builder-panel-grid">
+        <details className="builder-panel compliance-panel" open>
+          <summary>
+            <span>
+              <ShieldCheck size={18} />
+              Compliance checker
+            </span>
+            <strong className={`status-badge ${complianceTone(compliance.overallStatus)}`}>{compliance.overallStatus}</strong>
+            <ChevronDown size={18} />
+          </summary>
+          <div className="compliance-summary-row">
+            {(["Pass", "Warning", "High Risk", "Non-Compliant"] as ComplianceStatus[]).map((status) => (
+              <span key={status} className={`status-badge ${complianceTone(status)}`}>
+                {status}: {compliance.counts[status]}
+              </span>
+            ))}
+          </div>
+          <div className="finding-list">
+            {compliance.findings.map((finding) => (
+              <article key={finding.id}>
+                <div>
+                  {finding.status === "Pass" ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                  <strong>{finding.title}</strong>
+                </div>
+                <span className={`status-badge ${complianceTone(finding.status)}`}>{finding.status}</span>
+                <p>{finding.detail}</p>
+                <small>{finding.recommendation}</small>
+              </article>
+            ))}
+          </div>
+        </details>
+
+        <details className="builder-panel scoring-panel" open>
+          <summary>
+            <span>
+              <Gauge size={18} />
+              Evaluator scoring
+            </span>
+            <strong>{evaluatorAssessment.overallScore}%</strong>
+            <ChevronDown size={18} />
+          </summary>
+          <div className="score-export-row">
+            <div>
+              <p className="eyebrow">Overall evaluator score</p>
+              <strong>{evaluatorAssessment.overallScore}%</strong>
+              <span>{evaluatorScoreLabel(evaluatorAssessment.overallScore)}</span>
+            </div>
+            <button className="button compact" type="button" onClick={() => exportEvaluationReportMarkdown(project)}>
+              <Download size={16} />
+              Report MD
+            </button>
+            <button className="button compact primary" type="button" onClick={() => void exportEvaluationReportDocx(project)}>
+              <FileDown size={16} />
+              Report DOCX
+            </button>
+          </div>
+          <div className="section-score-list">
+            {evaluatorAssessment.sectionScores.map((sectionScore) => (
+              <button
+                className={sectionScore.key === activeSection.key ? "active" : ""}
+                type="button"
+                key={sectionScore.key}
+                onClick={() => setActiveKey(sectionScore.key)}
+              >
+                <span>{sectionScore.title}</span>
+                <strong>{sectionScore.score}%</strong>
+                <div className="strength-meter" aria-label={`${sectionScore.title} evaluator score ${sectionScore.score}%`}>
+                  <span className={scoreTone(sectionScore.score)} style={{ width: `${sectionScore.score}%` }} />
+                </div>
+              </button>
+            ))}
+          </div>
+          <div className="scoring-details">
+            <section>
+              <h3>Major strengths</h3>
+              <ul>
+                {evaluatorAssessment.majorStrengths.slice(0, 3).map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </section>
+            <section>
+              <h3>Major weaknesses</h3>
+              <ul>
+                {evaluatorAssessment.majorWeaknesses.slice(0, 3).map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </section>
+            <section>
+              <h3>Recommended fixes</h3>
+              <ul>
+                {evaluatorAssessment.recommendedFixes.slice(0, 3).map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </section>
+          </div>
+        </details>
+
+        <details className="builder-panel alignment-panel">
+          <summary>
+            <span>
+              <ScanSearch size={18} />
+              Cross-section alignment
+            </span>
+            <strong>{alignmentFindings.filter((finding) => finding.status !== "Aligned").length} flags</strong>
+            <ChevronDown size={18} />
+          </summary>
+          <div className="finding-list compact">
+            {alignmentFindings.map((finding) => (
+              <article key={finding.id}>
+                <div>
+                  {finding.status === "Aligned" ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                  <strong>{finding.title}</strong>
+                </div>
+                <span className={`status-badge ${finding.status === "Aligned" ? "pass" : finding.status === "Warning" ? "warning" : "risk"}`}>
+                  {finding.status}
+                </span>
+                <p>{finding.detail}</p>
+                <small>{finding.recommendation}</small>
+              </article>
+            ))}
+          </div>
+        </details>
+      </div>
+
       <div className="builder-layout">
         <nav className="section-nav" aria-label="Technical volume sections">
           <div className="section-nav-heading">
             <span>Completeness</span>
             <small>Draft coverage, not evaluator score</small>
           </div>
-          {project.sections.map((section) => {
+          {visibleSections.map((section) => {
             const completeness = sectionCompleteness[section.key];
+            const status = sectionStatuses[section.key];
 
             return (
               <button
@@ -193,7 +646,10 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
                 onClick={() => setActiveKey(section.key)}
               >
                 <div className="section-nav-row">
-                  <span>{section.title}</span>
+                  <span>
+                    {section.title}
+                    <small className={`section-status-tag ${status}`}>{sectionStatusLabel(status)}</small>
+                  </span>
                   <small>{countWords(section.content)} words</small>
                 </div>
                 <div className="strength-meter" aria-label={`${section.title} completeness ${completeness.score}%`}>
@@ -242,6 +698,19 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
               </div>
               <p>{evaluatorScore === undefined ? "Not reviewed" : evaluatorScoreLabel(evaluatorScore)}</p>
               <small>Separate from completeness; based on solicitation fit, evidence, metrics, transition, and risk.</small>
+              {activeSectionScore ? (
+                <div className="criterion-list">
+                  {activeSectionScore.criteria
+                    .slice()
+                    .sort((a, b) => a.score - b.score)
+                    .slice(0, 3)
+                    .map((criterion) => (
+                      <span key={criterion.key}>
+                        {criterion.title} <strong>{criterion.score}%</strong>
+                      </span>
+                    ))}
+                </div>
+              ) : null}
             </section>
 
             <section className="ai-suggestions" aria-label={`${activeSection.title} evaluator suggestions`}>
@@ -252,11 +721,38 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
               {activeSuggestion ? (
                 <>
                   <p>{activeSuggestion.summary}</p>
-                  <ul>
-                    {activeSuggestion.suggestions.map((suggestion) => (
-                      <li key={suggestion}>{suggestion}</li>
-                    ))}
-                  </ul>
+                  <dl className="reviewer-finding">
+                    <div>
+                      <dt>Reviewer finding</dt>
+                      <dd>{activeSuggestion.reviewerFinding || activeSuggestion.summary}</dd>
+                    </div>
+                    <div>
+                      <dt>Why it matters</dt>
+                      <dd>{activeSuggestion.whyItMatters || "This limits reviewer confidence in the section's scoreable evidence."}</dd>
+                    </div>
+                    <div>
+                      <dt>Score impact</dt>
+                      <dd>{activeSuggestion.scoreImpact || "The section score may stay capped until the gap is fixed."}</dd>
+                    </div>
+                    <div>
+                      <dt>Rewrite recommendation</dt>
+                      <dd>{activeSuggestion.rewriteRecommendation || activeSuggestion.suggestions[0]}</dd>
+                    </div>
+                    <div>
+                      <dt>Example improved language</dt>
+                      <dd>
+                        {activeSuggestion.improvedLanguageExample ||
+                          "During Phase I, we will validate [metric] for [customer/use case] using [test method], with success defined as [threshold]."}
+                      </dd>
+                    </div>
+                  </dl>
+                  {activeSuggestion.suggestions.length ? (
+                    <ul>
+                      {activeSuggestion.suggestions.map((suggestion) => (
+                        <li key={suggestion}>{suggestion}</li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </>
               ) : (
                 <p>Run evaluator suggestions to get SBIR reviewer findings for this draft.</p>

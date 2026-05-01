@@ -1,5 +1,6 @@
 import { ArrowRight, FilePlus2, FolderOpen, Gauge, ShieldCheck } from "lucide-react";
 import { Project } from "../types";
+import { getProjectVisibleSections } from "../utils/sectionVisibility";
 
 type DashboardProps = {
   projects: Project[];
@@ -18,7 +19,14 @@ const formatDate = (value: string) => {
   }).format(new Date(year, month - 1, day));
 };
 
-const filledSections = (project: Project) => project.sections.filter((section) => section.content.trim()).length;
+const sectionCoverage = (project: Project) => {
+  const visibleSections = getProjectVisibleSections(project);
+
+  return {
+    filled: visibleSections.filter((section) => section.content.trim()).length,
+    total: visibleSections.length,
+  };
+};
 
 export const Dashboard = ({ projects, onCreateProject, onSelectProject }: DashboardProps) => {
   const evaluatedCount = projects.filter((project) => project.evaluation).length;
@@ -66,40 +74,46 @@ export const Dashboard = ({ projects, onCreateProject, onSelectProject }: Dashbo
 
       {projects.length ? (
         <div className="project-grid">
-          {projects.map((project) => (
-            <button
-              className="project-card"
-              type="button"
-              key={project.id}
-              onClick={() => onSelectProject(project.id)}
-            >
-              <div>
-                <span className="status-pill">{project.program}</span>
-                <h3>{project.name}</h3>
-                <p>
-                  {project.agency} {project.topicId ? `• ${project.topicId}` : ""}
-                </p>
-              </div>
-              <dl className="project-card-meta">
+          {projects.map((project) => {
+            const coverage = sectionCoverage(project);
+
+            return (
+              <button
+                className="project-card"
+                type="button"
+                key={project.id}
+                onClick={() => onSelectProject(project.id)}
+              >
                 <div>
-                  <dt>Due</dt>
-                  <dd>{formatDate(project.dueDate)}</dd>
+                  <span className="status-pill">{project.program}</span>
+                  <h3>{project.name}</h3>
+                  <p>
+                    {project.agency} {project.topicId ? `• ${project.topicId}` : ""}
+                  </p>
                 </div>
-                <div>
-                  <dt>Builder</dt>
-                  <dd>{filledSections(project)}/8 sections</dd>
-                </div>
-                <div>
-                  <dt>Score</dt>
-                  <dd>{project.evaluation ? project.evaluation.readinessScore : "--"}</dd>
-                </div>
-              </dl>
-              <span className="open-project">
-                Open
-                <ArrowRight size={16} />
-              </span>
-            </button>
-          ))}
+                <dl className="project-card-meta">
+                  <div>
+                    <dt>Due</dt>
+                    <dd>{formatDate(project.dueDate)}</dd>
+                  </div>
+                  <div>
+                    <dt>Builder</dt>
+                    <dd>
+                      {coverage.filled}/{coverage.total} sections
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Score</dt>
+                    <dd>{project.evaluation ? project.evaluation.readinessScore : "--"}</dd>
+                  </div>
+                </dl>
+                <span className="open-project">
+                  Open
+                  <ArrowRight size={16} />
+                </span>
+              </button>
+            );
+          })}
         </div>
       ) : (
         <div className="empty-state">

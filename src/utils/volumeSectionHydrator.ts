@@ -20,6 +20,14 @@ const sectionKeywordPatterns: Record<VolumeSectionKey, RegExp[]> = {
     /\bopportunity\b/i,
     /\bgap\b/i,
   ],
+  objectivesSpecificAims: [
+    /\bobjectives?\b/i,
+    /\bspecific aims?\b/i,
+    /\baims?\b/i,
+    /\bgoals?\b/i,
+    /\bhypothesis\b/i,
+    /\btechnical objectives?\b/i,
+  ],
   technicalApproach: [
     /\btechnical approach\b/i,
     /\bapproach\b/i,
@@ -49,6 +57,33 @@ const sectionKeywordPatterns: Record<VolumeSectionKey, RegExp[]> = {
     /\bdeliverable\b/i,
     /\btimeline\b/i,
   ],
+  expectedOutcomesDeliverables: [
+    /\bexpected outcomes?\b/i,
+    /\boutcomes?\b/i,
+    /\bdeliverables?\b/i,
+    /\boutputs?\b/i,
+    /\bprototype\b/i,
+    /\breport\b/i,
+    /\bdata package\b/i,
+  ],
+  evaluationMetricsSuccessCriteria: [
+    /\bevaluation metrics?\b/i,
+    /\bsuccess criteria\b/i,
+    /\bmetrics?\b/i,
+    /\bthreshold\b/i,
+    /\bbaseline\b/i,
+    /\bacceptance criteria\b/i,
+    /\bmeasure\b/i,
+  ],
+  relatedWorkPriorRd: [
+    /\brelated work\b/i,
+    /\bprior r&d\b/i,
+    /\bprior research\b/i,
+    /\bpreliminary data\b/i,
+    /\bbackground\b/i,
+    /\bstate of the art\b/i,
+    /\bprevious work\b/i,
+  ],
   team: [
     /\bteam\b/i,
     /\bkey personnel\b/i,
@@ -58,6 +93,15 @@ const sectionKeywordPatterns: Record<VolumeSectionKey, RegExp[]> = {
     /\bmanagement\b/i,
     /\badvisor\b/i,
     /\bsubcontractor\b/i,
+  ],
+  facilitiesEquipmentResources: [
+    /\bfacilities?\b/i,
+    /\bequipment\b/i,
+    /\bresources?\b/i,
+    /\blaboratory\b/i,
+    /\blab\b/i,
+    /\binstrument\b/i,
+    /\bcomputing\b/i,
   ],
   commercializationTransition: [
     /\bcommercialization\b/i,
@@ -69,12 +113,49 @@ const sectionKeywordPatterns: Record<VolumeSectionKey, RegExp[]> = {
     /\bprocurement\b/i,
     /\brevenue\b/i,
   ],
+  customerDiscoveryEndUserValidation: [
+    /\bcustomer discovery\b/i,
+    /\bend user\b/i,
+    /\buser validation\b/i,
+    /\binterviews?\b/i,
+    /\bfeedback\b/i,
+    /\bletter of support\b/i,
+    /\bpilot\b/i,
+  ],
+  phaseIToPhaseIITransition: [
+    /\bphase i to phase ii\b/i,
+    /\bphase 1 to phase 2\b/i,
+    /\bphase ii transition\b/i,
+    /\bnext phase\b/i,
+    /\bfollow-on\b/i,
+    /\btransition plan\b/i,
+    /\bphase ii plan\b/i,
+  ],
   risks: [
     /\brisk\b/i,
     /\bmitigation\b/i,
     /\bdependency\b/i,
     /\bfallback\b/i,
     /\bassumption\b/i,
+  ],
+  securityComplianceCyber: [
+    /\bsecurity\b/i,
+    /\bcompliance\b/i,
+    /\bcyber\b/i,
+    /\bprivacy\b/i,
+    /\bregulatory\b/i,
+    /\bhuman subjects\b/i,
+    /\bcmmc\b/i,
+    /\bnist\b/i,
+  ],
+  dataRightsIpStrategy: [
+    /\bdata rights\b/i,
+    /\bip\b/i,
+    /\bintellectual property\b/i,
+    /\bpatent\b/i,
+    /\btrade secret\b/i,
+    /\blicens/i,
+    /\bfreedom to operate\b/i,
   ],
   budgetNarrative: [
     /\bbudget\b/i,
@@ -85,16 +166,45 @@ const sectionKeywordPatterns: Record<VolumeSectionKey, RegExp[]> = {
     /\bindirect\b/i,
     /\bfee\b/i,
   ],
+  referencesCitations: [
+    /\breferences?\b/i,
+    /\bcitations?\b/i,
+    /\bbibliography\b/i,
+    /\bdoi\b/i,
+    /\bjournal\b/i,
+    /\bpublication\b/i,
+    /\bsources?\b/i,
+  ],
 };
 
 const headingClassifiers: Array<{ key: VolumeSectionKey; patterns: RegExp[] }> = [
+  {
+    key: "referencesCitations",
+    patterns: [/\breferences?\b/i, /\bcitations?\b/i, /\bbibliography\b/i, /\bsources?\b/i],
+  },
   {
     key: "budgetNarrative",
     patterns: [/\bbudget\b/i, /\bbudget narrative\b/i, /\bcost narrative\b/i, /\bcost proposal\b/i],
   },
   {
+    key: "dataRightsIpStrategy",
+    patterns: [/\bdata rights\b/i, /\bip strategy\b/i, /\bintellectual property\b/i, /\bpatent strategy\b/i],
+  },
+  {
+    key: "securityComplianceCyber",
+    patterns: [/\bsecurity\b/i, /\bcyber\b/i, /\bcompliance\b/i, /\bregulatory\b/i, /\bhuman subjects\b/i],
+  },
+  {
     key: "risks",
     patterns: [/\brisk/i, /\brisk mitigation\b/i, /\bmitigation plan\b/i],
+  },
+  {
+    key: "phaseIToPhaseIITransition",
+    patterns: [/\bphase i to phase ii\b/i, /\bphase ii transition\b/i, /\bphase 1 to phase 2\b/i, /\bnext phase\b/i],
+  },
+  {
+    key: "customerDiscoveryEndUserValidation",
+    patterns: [/\bcustomer discovery\b/i, /\bend user validation\b/i, /\bcustomer validation\b/i, /\bend user\b/i],
   },
   {
     key: "commercializationTransition",
@@ -106,6 +216,22 @@ const headingClassifiers: Array<{ key: VolumeSectionKey; patterns: RegExp[] }> =
       /\bphase iii\b/i,
       /\badoption\b/i,
     ],
+  },
+  {
+    key: "facilitiesEquipmentResources",
+    patterns: [/\bfacilities?\b/i, /\bequipment\b/i, /\bresources?\b/i, /\blaborator(y|ies)\b/i],
+  },
+  {
+    key: "relatedWorkPriorRd",
+    patterns: [/\brelated work\b/i, /\bprior r&d\b/i, /\bprior research\b/i, /\bpreliminary data\b/i],
+  },
+  {
+    key: "evaluationMetricsSuccessCriteria",
+    patterns: [/\bevaluation metrics?\b/i, /\bsuccess criteria\b/i, /\bmetrics?\b/i, /\bacceptance criteria\b/i],
+  },
+  {
+    key: "expectedOutcomesDeliverables",
+    patterns: [/\bexpected outcomes?\b/i, /\boutcomes?\b/i, /\bdeliverables?\b/i, /\bexpected results?\b/i],
   },
   {
     key: "workPlan",
@@ -130,6 +256,10 @@ const headingClassifiers: Array<{ key: VolumeSectionKey; patterns: RegExp[] }> =
       /\bmanagement plan\b/i,
       /\bpartners?\b/i,
     ],
+  },
+  {
+    key: "objectivesSpecificAims",
+    patterns: [/\bspecific aims?\b/i, /\bobjectives?\b/i, /\btechnical objectives?\b/i, /\bgoals?\b/i],
   },
   {
     key: "innovation",

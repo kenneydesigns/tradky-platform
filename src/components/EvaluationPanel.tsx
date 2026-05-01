@@ -1,6 +1,6 @@
 import { AlertTriangle, CheckCircle2, CircleDot, Download, FileDown, ListChecks, Sparkles } from "lucide-react";
 import { EvaluationResult, Project } from "../types";
-import { exportEvaluationReportDocx, exportEvaluationReportPdf } from "../utils/exporters";
+import { exportEvaluationReportDocx, exportEvaluationReportMarkdown, exportEvaluationReportPdf } from "../utils/exporters";
 
 type EvaluationPanelProps = {
   project: Project;
@@ -71,6 +71,10 @@ export const EvaluationPanel = ({ project, evaluation }: EvaluationPanelProps) =
           {primaryFailureReason ? <p className="primary-failure">Primary failure driver: {primaryFailureReason}</p> : null}
         </div>
         <div className="evaluation-report-actions">
+          <button className="button evaluation-report-button" type="button" onClick={() => exportEvaluationReportMarkdown(project)}>
+            <Download size={17} />
+            MD Report
+          </button>
           <button className="button evaluation-report-button" type="button" onClick={() => void exportEvaluationReportPdf(project)}>
             <Download size={17} />
             PDF Report
