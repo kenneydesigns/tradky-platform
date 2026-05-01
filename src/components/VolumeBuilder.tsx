@@ -127,9 +127,7 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
   const requiredSectionKeys = useMemo(() => getProjectRequiredSectionKeys(project), [project]);
   const optionalSectionKeys = useMemo(() => getProjectOptionalSectionKeys(project), [project]);
   const hiddenSectionCount = project.sections.length - visibleSections.length;
-  const hiddenSavedSectionCount = project.sections.filter(
-    (section) => sectionStatuses[section.key] === "hidden" && section.content.trim(),
-  ).length;
+  const canIncludeHiddenSections = hiddenSectionCount > 0;
   const activeSection = visibleSections.find((section) => section.key === activeKey) ?? visibleSections[0] ?? project.sections[0];
   const activeSuggestion = suggestionsByKey[activeSection.key];
   const compliance = useMemo(() => analyzeProposalCompliance(project), [project]);
@@ -417,7 +415,11 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
           <h2>
             {totalWords} words across {visibleSections.length} visible sections
           </h2>
-          {hiddenSectionCount ? <small>{hiddenSectionCount} profile-hidden sections remain saved.</small> : null}
+          {hiddenSectionCount ? (
+            <small>
+              {hiddenSectionCount} profile-hidden {hiddenSectionCount === 1 ? "section" : "sections"} remain saved.
+            </small>
+          ) : null}
         </div>
         <div className="toolbar-actions">
           <button
@@ -437,7 +439,7 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
             <input
               type="checkbox"
               checked={includeHiddenSavedSections}
-              disabled={!hiddenSavedSectionCount}
+              disabled={!canIncludeHiddenSections}
               onChange={(event) => setIncludeHiddenSavedSections(event.target.checked)}
             />
             Include hidden saved sections

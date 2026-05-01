@@ -1231,14 +1231,28 @@ select:focus {
   border-radius: 8px;
   background: #fbfcf9;
   color: #34413c;
+  cursor: pointer;
   font-size: 0.82rem;
   font-weight: 750;
+  user-select: none;
 }
 
 .export-hidden-toggle input {
+  flex: 0 0 auto;
   width: 16px;
   height: 16px;
+  margin: 0;
   accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.export-hidden-toggle:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.export-hidden-toggle input:disabled {
+  cursor: not-allowed;
 }
 
 .builder-layout {
