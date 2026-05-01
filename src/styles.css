@@ -401,6 +401,33 @@ button:disabled {
   font-weight: 800;
 }
 
+.score-pill-stack {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.decision-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.decision-pill.select {
+  background: #e8f5ec;
+  color: #0e7c3a;
+}
+
+.decision-pill.do-not-select {
+  background: #fdecec;
+  color: var(--red);
+}
+
 .project-card-meta {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -578,6 +605,17 @@ select:focus {
 .score-band h2 {
   margin: 0;
   font-size: 3rem;
+}
+
+.score-summary {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.primary-failure {
+  color: var(--red);
+  font-weight: 760;
 }
 
 .evaluation-report-button {

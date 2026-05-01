@@ -22,16 +22,16 @@ const categoryData: Array<{
 }> = [
   { key: "strengths", title: "Strengths" },
   { key: "weaknesses", title: "Weaknesses" },
-  { key: "complianceGaps", title: "DAF/AFWERX Compliance Gaps" },
-  { key: "technicalMerit", title: "Technical Merit Rubric Feedback" },
-  { key: "commercialization", title: "Commercialization Rubric Feedback" },
-  { key: "transitionPotential", title: "Defense Need / Transition Fit" },
-  { key: "rewriteActions", title: "Score-Lifting Rewrite Actions" },
+  { key: "complianceGaps", title: "Compliance / Evidence Gaps" },
+  { key: "technicalMerit", title: "Technical / Intellectual Merit Feedback" },
+  { key: "commercialization", title: "Commercialization / Impact Feedback" },
+  { key: "transitionPotential", title: "Mission / Team / Environment Fit" },
+  { key: "rewriteActions", title: "Priority Actions" },
 ];
 
 const scoreLabel = (score: number) => {
   if (score >= 90) return "Excellent";
-  if (score >= 70) return "Good";
+  if (score >= 70) return "Competitive";
   if (score >= 50) return "Acceptable";
   if (score >= 30) return "Marginal";
   return "Poor";
@@ -48,15 +48,28 @@ export const EvaluationPanel = ({ project, evaluation }: EvaluationPanelProps) =
     );
   }
 
+  const fundingDecision = evaluation.multiAgencyEvaluation?.funding_decision;
+  const primaryFailureReason = evaluation.multiAgencyEvaluation?.primary_failure_reason;
+
   return (
     <div className="evaluation-panel">
       <section className="score-band">
         <div>
-          <p className="eyebrow">DAF/AFWERX rubric score</p>
+          <p className="eyebrow">Multi-agency evaluator score</p>
           <h2>{evaluation.readinessScore}</h2>
         </div>
-        <span className="score-label">{scoreLabel(evaluation.readinessScore)}</span>
-        <p>{evaluation.confidenceNote}</p>
+        <div className="score-pill-stack">
+          <span className="score-label">{scoreLabel(evaluation.readinessScore)}</span>
+          {fundingDecision ? (
+            <span className={`decision-pill ${fundingDecision === "Select" ? "select" : "do-not-select"}`}>
+              {fundingDecision}
+            </span>
+          ) : null}
+        </div>
+        <div className="score-summary">
+          <p>{evaluation.confidenceNote}</p>
+          {primaryFailureReason ? <p className="primary-failure">Primary failure driver: {primaryFailureReason}</p> : null}
+        </div>
         <div className="evaluation-report-actions">
           <button className="button evaluation-report-button" type="button" onClick={() => void exportEvaluationReportPdf(project)}>
             <Download size={17} />
@@ -70,12 +83,12 @@ export const EvaluationPanel = ({ project, evaluation }: EvaluationPanelProps) =
       </section>
 
       {evaluation.rubricScores?.length ? (
-        <section className="rubric-panel" aria-label="DAF/AFWERX rubric rankings">
+        <section className="rubric-panel" aria-label="Agency rubric rankings">
           <header>
             <ListChecks size={18} />
             <div>
               <p className="eyebrow">Evaluator rankings</p>
-              <h3>DAF/AFWERX 1-5 scoring logic</h3>
+              <h3>Agency rubric 1-5 scoring logic</h3>
             </div>
           </header>
           <div className="rubric-grid">

@@ -119,7 +119,7 @@ const formatDisplayDateTime = (value: string) => {
 
 const scoreLabel = (score: number) => {
   if (score >= 90) return "Excellent";
-  if (score >= 70) return "Good";
+  if (score >= 70) return "Competitive";
   if (score >= 50) return "Acceptable";
   if (score >= 30) return "Marginal";
   return "Poor";
@@ -582,18 +582,11 @@ const buildEvaluationReport = (project: Project): EvaluationReport => {
   const defense = getRubricScore(project, "defenseNeed");
   const commercial = getRubricScore(project, "commercialization");
   const overallRating = scoreLabel(evaluation.readinessScore);
+  const modelFundingDecision = evaluation.multiAgencyEvaluation?.funding_decision;
   const selectabilityAssessment = hasDisqualifier
-    ? "Not Selectable"
-    : evaluation.readinessScore >= 85 && !hasManualMandatoryChecks
-      ? "Highly Selectable"
-      : evaluation.readinessScore >= 50
-        ? "Selectable with Revisions"
-        : "Not Selectable";
-  const finalDecision = hasDisqualifier || evaluation.readinessScore < 50
-    ? "Do Not Recommend"
-    : evaluation.readinessScore >= 85 && !hasManualMandatoryChecks
-      ? "Recommend for Award"
-      : "Recommend with Revisions";
+    ? "Do Not Select"
+    : modelFundingDecision ?? (evaluation.readinessScore >= 85 && !hasManualMandatoryChecks ? "Select" : "Do Not Select");
+  const finalDecision = selectabilityAssessment;
   const proposalTitle = project.name || "Not specified";
   const topicNumber = project.topicId || "Not specified";
   const phase = /direct/i.test(project.phase) ? "Direct-to-Phase II (D2P2)" : project.phase || "Not specified";
@@ -669,7 +662,8 @@ const buildEvaluationReport = (project: Project): EvaluationReport => {
     finalDecision,
     finalDecisionNote: hasManualMandatoryChecks
       ? "Decision is conditional on manual verification of mandatory compliance items."
-      : "Decision reflects the current evaluator score and extracted compliance evidence.",
+      : evaluation.multiAgencyEvaluation?.decision_rationale ??
+        "Decision reflects the current evaluator score and extracted compliance evidence.",
   };
 };
 

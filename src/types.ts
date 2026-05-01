@@ -17,7 +17,7 @@ export type VolumeSection = {
 };
 
 export type DafAfwerxRubricScore = {
-  key: DafAfwerxRubricCategoryKey;
+  key: DafAfwerxRubricCategoryKey | string;
   title: string;
   score: number;
   label: string;
@@ -36,6 +36,7 @@ export type EvaluationResult = {
   generatedAt: string;
   readinessScore: number;
   confidenceNote: string;
+  multiAgencyEvaluation?: MultiAgencyEvaluation;
   rubricScores?: DafAfwerxRubricScore[];
   costVolumeChecks?: CostVolumeCheck[];
   strengths: string[];
@@ -45,6 +46,47 @@ export type EvaluationResult = {
   commercialization: string[];
   transitionPotential: string[];
   rewriteActions: string[];
+};
+
+export type MultiAgencyCriterionEvaluation = {
+  name: string;
+  score: number;
+  evidence_present: "Yes" | "No";
+  evidence_anchor: string;
+  reason: string;
+  gap: string;
+  fix: string;
+};
+
+export type FundingDecision = "Select" | "Do Not Select";
+
+export type WeaknessImpactLevel = "Critical" | "High" | "Medium" | "Low";
+
+export type RankedWeakness = {
+  severity: WeaknessImpactLevel;
+  weakness: string;
+  selection_impact: string;
+  consequence_if_not_fixed: string;
+  why_prevents_funding: string;
+  evaluator_interpretation: string;
+};
+
+export type MultiAgencyEvaluation = {
+  agency_detected: string;
+  fit_score: number;
+  quality_score: number;
+  funding_decision: FundingDecision;
+  decision_rationale: string;
+  primary_failure_reason: string;
+  most_likely_rejection_issue: string;
+  confidence: "High" | "Moderate" | "Low";
+  confidence_reason: string;
+  flags: string[];
+  criteria: MultiAgencyCriterionEvaluation[];
+  top_strengths: string[];
+  top_weaknesses: string[];
+  weakness_rankings: RankedWeakness[];
+  priority_actions: string[];
 };
 
 export type Project = {
