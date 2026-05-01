@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { AlertTriangle, CheckCircle2, CircleDot, Download, FileDown, ListChecks, Sparkles } from "lucide-react";
 import { EvaluationResult, Project } from "../types";
 import { exportEvaluationReportDocx, exportEvaluationReportMarkdown, exportEvaluationReportPdf } from "../utils/exporters";
@@ -38,6 +39,44 @@ const scoreLabel = (score: number) => {
 };
 
 export const EvaluationPanel = ({ project, evaluation }: EvaluationPanelProps) => {
+  const [notice, setNotice] = useState<{ tone: "info" | "success" | "error"; message: string } | null>(null);
+
+  const setExportFailure = (caught: unknown, fallback: string) => {
+    setNotice({
+      tone: "error",
+      message: caught instanceof Error ? caught.message : fallback,
+    });
+  };
+
+  const exportMarkdownReport = () => {
+    try {
+      const filename = exportEvaluationReportMarkdown(project);
+      setNotice({ tone: "success", message: `${filename} generated. Download started.` });
+    } catch (caught) {
+      setExportFailure(caught, "Markdown report export failed.");
+    }
+  };
+
+  const exportPdfReport = () => {
+    try {
+      const filename = exportEvaluationReportPdf(project);
+      setNotice({ tone: "success", message: `${filename} generated. Download started.` });
+    } catch (caught) {
+      setExportFailure(caught, "PDF report export failed.");
+    }
+  };
+
+  const exportDocxReport = async () => {
+    setNotice({ tone: "info", message: "Generating DOCX report..." });
+
+    try {
+      const filename = await exportEvaluationReportDocx(project);
+      setNotice({ tone: "success", message: `${filename} generated. Download started.` });
+    } catch (caught) {
+      setExportFailure(caught, "DOCX report export failed.");
+    }
+  };
+
   if (!evaluation) {
     return (
       <div className="empty-state evaluation-empty">
@@ -71,20 +110,26 @@ export const EvaluationPanel = ({ project, evaluation }: EvaluationPanelProps) =
           {primaryFailureReason ? <p className="primary-failure">Primary failure driver: {primaryFailureReason}</p> : null}
         </div>
         <div className="evaluation-report-actions">
-          <button className="button evaluation-report-button" type="button" onClick={() => exportEvaluationReportMarkdown(project)}>
+          <button className="button evaluation-report-button" type="button" onClick={exportMarkdownReport}>
             <Download size={17} />
             MD Report
           </button>
-          <button className="button evaluation-report-button" type="button" onClick={() => void exportEvaluationReportPdf(project)}>
+          <button className="button evaluation-report-button" type="button" onClick={exportPdfReport}>
             <Download size={17} />
             PDF Report
           </button>
-          <button className="button primary evaluation-report-button" type="button" onClick={() => void exportEvaluationReportDocx(project)}>
+          <button className="button primary evaluation-report-button" type="button" onClick={() => void exportDocxReport()}>
             <FileDown size={17} />
             DOCX Report
           </button>
         </div>
       </section>
+
+      {notice ? (
+        <div className={`status-banner ${notice.tone}`} role="status">
+          {notice.message}
+        </div>
+      ) : null}
 
       {evaluation.rubricScores?.length ? (
         <section className="rubric-panel" aria-label="Agency rubric rankings">

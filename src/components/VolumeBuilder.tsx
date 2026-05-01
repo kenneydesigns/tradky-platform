@@ -23,12 +23,14 @@ import {
   VolumeSectionKey,
   VolumeSectionStatus,
 } from "../types";
-import { SOLICITATION_PROFILE_OPTIONS, getSectionStatusesForProfile, getSolicitationProfile } from "../data/solicitationProfiles";
+import { SOLICITATION_PROFILE_OPTIONS, getSolicitationProfile } from "../data/solicitationProfiles";
 import { draftVolumeSections, implementSectionSuggestions, suggestVolumeSections } from "../services/aiClient";
 import { exportDocx, exportEvaluationReportDocx, exportEvaluationReportMarkdown, exportMarkdown } from "../utils/exporters";
 import { analyzeCrossSectionAlignment } from "../utils/alignmentChecker";
 import { analyzeProposalCompliance } from "../utils/complianceChecker";
+import { analyzeEvidenceAnchors, EvidenceAnchorStatus } from "../utils/evidenceAnchors";
 import { scoreProposalEvaluator } from "../utils/evaluatorScoring";
+import { applySolicitationProfile, sanitizeSubmissionNumber } from "../utils/projectProfile";
 import { analyzeSectionStrength, SectionStrength } from "../utils/sectionStrength";
 import {
   getProjectOptionalSectionKeys,
@@ -48,6 +50,11 @@ type RewritePreview = {
   before: string;
   after: string;
   selectedSuggestions: string[];
+};
+
+type ActionNotice = {
+  tone: "info" | "success" | "warning" | "error";
+  message: string;
 };
 
 const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
@@ -70,6 +77,12 @@ const complianceTone = (status: ComplianceStatus) => {
   if (status === "Warning") return "warning";
   if (status === "High Risk") return "risk";
   return "non-compliant";
+};
+
+const evidenceTone = (status: EvidenceAnchorStatus) => {
+  if (status === "present") return "pass";
+  if (status === "placeholder") return "warning";
+  return "risk";
 };
 
 const createCompletenessMap = (sections: VolumeSection[]) =>
@@ -121,6 +134,7 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
   const [suggestionError, setSuggestionError] = useState("");
   const [rewriteError, setRewriteError] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
+  const [actionNotice, setActionNotice] = useState<ActionNotice | null>(null);
   const profile = useMemo(() => getSolicitationProfile(project.solicitationProfile), [project.solicitationProfile]);
   const sectionStatuses = useMemo(() => getProjectSectionStatuses(project), [project]);
   const visibleSections = useMemo(() => getProjectVisibleSections(project), [project]);
@@ -134,6 +148,7 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
   const evaluatorAssessment = useMemo(() => scoreProposalEvaluator(project), [project]);
   const alignmentFindings = useMemo(() => analyzeCrossSectionAlignment(project), [project]);
   const activeSectionScore = evaluatorAssessment.sectionScores.find((section) => section.key === activeSection.key);
+  const activeEvidenceAnchors = useMemo(() => analyzeEvidenceAnchors(project, activeSection), [activeSection, project]);
 
   const totalWords = useMemo(
     () => visibleSections.reduce((sum, section) => sum + countWords(section.content), 0),
@@ -165,6 +180,15 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
 
   const commitProject = (nextProject: Project) => {
     onUpdateProject(buildProjectAssessments(nextProject));
+  };
+
+  const sectionCountLabel = (count: number) => `${count} ${count === 1 ? "section" : "sections"}`;
+
+  const setExportFailure = (caught: unknown, fallback: string) => {
+    setActionNotice({
+      tone: "error",
+      message: caught instanceof Error ? caught.message : fallback,
+    });
   };
 
   const resetImplementationState = (sectionKeys: VolumeSectionKey[]) => {
@@ -217,11 +241,22 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
 
     setDraftingTarget(target);
     setDraftError("");
+    setActionNotice({ tone: "info", message: `Drafting ${sectionCountLabel(sectionKeys.length)}...` });
 
     try {
       const result = await draftVolumeSections({ project, sectionKeys });
       applySectionDrafts(result.sections);
+      const evidenceRiskCount = result.sections.filter((section) => analyzeEvidenceAnchors(project, section).label !== "Source-specific").length;
+      setActionNotice({
+        tone: evidenceRiskCount ? "warning" : "success",
+        message: evidenceRiskCount
+          ? `Drafted ${sectionCountLabel(result.sections.length)}. ${sectionCountLabel(evidenceRiskCount)} still ${
+              evidenceRiskCount === 1 ? "needs" : "need"
+            } source-specific evidence.`
+          : `Drafted ${sectionCountLabel(result.sections.length)} with source-specific anchors.`,
+      });
     } catch (caught) {
+      setActionNotice(null);
       setDraftError(caught instanceof Error ? caught.message : "Section drafting failed");
     } finally {
       setDraftingTarget(null);
@@ -233,6 +268,7 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
 
     setSuggestingTarget(target);
     setSuggestionError("");
+    setActionNotice({ tone: "info", message: `Reviewing ${sectionCountLabel(sectionKeys.length)}...` });
 
     try {
       const result = await suggestVolumeSections({ project, sectionKeys });
@@ -242,7 +278,9 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
         ...current,
         ...Object.fromEntries(result.sections.map((section) => [section.key, section])),
       }));
+      setActionNotice({ tone: "success", message: `Evaluator suggestions generated for ${sectionCountLabel(result.sections.length)}.` });
     } catch (caught) {
+      setActionNotice(null);
       setSuggestionError(caught instanceof Error ? caught.message : "Section suggestions failed");
     } finally {
       setSuggestingTarget(null);
@@ -313,6 +351,7 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
     setImplementingTarget(sectionSnapshot.key);
     setRewriteError("");
     setCopyStatus("");
+    setActionNotice({ tone: "info", message: `Preparing rewrite preview for ${sectionSnapshot.title}...` });
 
     try {
       const result = await implementSectionSuggestions({
@@ -327,7 +366,9 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
         after: result.section.content,
         selectedSuggestions: result.selectedSuggestions,
       });
+      setActionNotice({ tone: "success", message: `Rewrite preview ready for ${sectionSnapshot.title}.` });
     } catch (caught) {
+      setActionNotice(null);
       setRewriteError(caught instanceof Error ? caught.message : "Section rewrite failed");
     } finally {
       setImplementingTarget(null);
@@ -339,6 +380,7 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
     updateSection(activeSection, activeRewritePreview.after);
     setRewritePreview(null);
     setCopyStatus("");
+    setActionNotice({ tone: "success", message: `${activeRewritePreview.title} rewrite accepted.` });
   };
 
   const rejectRewrite = () => {
@@ -358,21 +400,7 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
   };
 
   const updateProfile = (solicitationProfile: SolicitationProfileKey) => {
-    const nextProfile = getSolicitationProfile(solicitationProfile);
-    const nextStatuses =
-      nextProfile.key === "customMultiAgency"
-        ? getSectionStatusesForProfile(nextProfile.key, project.sectionStatuses)
-        : getSectionStatusesForProfile(nextProfile.key);
-
-    commitProject({
-      ...project,
-      solicitationProfile: nextProfile.key,
-      agency: nextProfile.agency,
-      program: nextProfile.program,
-      submissionRequirements: nextProfile.submissionRequirements,
-      evaluationWeights: nextProfile.evaluationWeights,
-      sectionStatuses: nextStatuses,
-    });
+    commitProject(applySolicitationProfile(project, solicitationProfile));
   };
 
   const updateSectionStatus = (sectionKey: VolumeSectionKey, status: VolumeSectionStatus) => {
@@ -397,14 +425,65 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
     });
   };
 
+  const updateTopicId = (topicId: string) => {
+    const shouldSyncSolicitationNumber =
+      !project.solicitationNumber.trim() || project.solicitationNumber.trim() === project.topicId.trim();
+
+    commitProject({
+      ...project,
+      topicId,
+      solicitationNumber: shouldSyncSolicitationNumber ? topicId : project.solicitationNumber,
+    });
+  };
+
   const updateSubmissionNumber = (value: number, key: "pageLimit" | "wordLimit") => {
     commitProject({
       ...project,
       submissionRequirements: {
         ...project.submissionRequirements,
-        [key]: Number.isFinite(value) && value >= 0 ? value : 0,
+        [key]: sanitizeSubmissionNumber(value),
       },
     });
+  };
+
+  const exportVolumeMarkdown = () => {
+    try {
+      const filename = exportMarkdown(project, { includeHiddenSavedSections });
+      setActionNotice({ tone: "success", message: `${filename} generated. Download started.` });
+    } catch (caught) {
+      setExportFailure(caught, "Markdown export failed.");
+    }
+  };
+
+  const exportVolumeDocx = async () => {
+    setActionNotice({ tone: "info", message: "Generating volume DOCX..." });
+
+    try {
+      const filename = await exportDocx(project, { includeHiddenSavedSections });
+      setActionNotice({ tone: "success", message: `${filename} generated. Download started.` });
+    } catch (caught) {
+      setExportFailure(caught, "DOCX export failed.");
+    }
+  };
+
+  const exportReportMarkdown = () => {
+    try {
+      const filename = exportEvaluationReportMarkdown(project);
+      setActionNotice({ tone: "success", message: `${filename} generated. Download started.` });
+    } catch (caught) {
+      setExportFailure(caught, "Evaluation report export failed.");
+    }
+  };
+
+  const exportReportDocx = async () => {
+    setActionNotice({ tone: "info", message: "Generating evaluation report DOCX..." });
+
+    try {
+      const filename = await exportEvaluationReportDocx(project);
+      setActionNotice({ tone: "success", message: `${filename} generated. Download started.` });
+    } catch (caught) {
+      setExportFailure(caught, "Evaluation report DOCX export failed.");
+    }
   };
 
   return (
@@ -447,7 +526,7 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
           <button
             className="button"
             type="button"
-            onClick={() => exportMarkdown(project, { includeHiddenSavedSections })}
+            onClick={exportVolumeMarkdown}
           >
             <Download size={17} />
             Volume MD
@@ -455,7 +534,7 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
           <button
             className="button primary"
             type="button"
-            onClick={() => void exportDocx(project, { includeHiddenSavedSections })}
+            onClick={() => void exportVolumeDocx()}
           >
             <FileDown size={17} />
             Volume DOCX
@@ -465,6 +544,11 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
 
       {draftError ? <div className="error-banner">{draftError}</div> : null}
       {suggestionError ? <div className="error-banner">{suggestionError}</div> : null}
+      {actionNotice ? (
+        <div className={`status-banner ${actionNotice.tone}`} role="status">
+          {actionNotice.message}
+        </div>
+      ) : null}
 
       <details className="builder-panel solicitation-panel">
         <summary>
@@ -500,6 +584,21 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
           </label>
 
           <label>
+            Topic ID
+            <input value={project.topicId} onChange={(event) => updateTopicId(event.target.value)} placeholder="AF26.1-123" />
+          </label>
+
+          <label>
+            Program
+            <input value={project.program} onChange={(event) => updateProjectField("program", event.target.value)} />
+          </label>
+
+          <label>
+            Phase
+            <input value={project.phase} onChange={(event) => updateProjectField("phase", event.target.value)} />
+          </label>
+
+          <label>
             Agency
             <input value={project.agency} onChange={(event) => updateProjectField("agency", event.target.value)} />
           </label>
@@ -521,6 +620,11 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
               value={project.closeDate}
               onChange={(event) => updateProjectField("closeDate", event.target.value)}
             />
+          </label>
+
+          <label>
+            Due date
+            <input type="date" value={project.dueDate} onChange={(event) => updateProjectField("dueDate", event.target.value)} />
           </label>
 
           <label>
@@ -680,11 +784,11 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
               <strong>{evaluatorAssessment.overallScore}%</strong>
               <span>{evaluatorScoreLabel(evaluatorAssessment.overallScore)}</span>
             </div>
-            <button className="button compact" type="button" onClick={() => exportEvaluationReportMarkdown(project)}>
+            <button className="button compact" type="button" onClick={exportReportMarkdown}>
               <Download size={16} />
               Report MD
             </button>
-            <button className="button compact primary" type="button" onClick={() => void exportEvaluationReportDocx(project)}>
+            <button className="button compact primary" type="button" onClick={() => void exportReportDocx()}>
               <FileDown size={16} />
               Report DOCX
             </button>
@@ -843,6 +947,34 @@ export const VolumeBuilder = ({ project, onUpdateProject }: VolumeBuilderProps) 
                     ))}
                 </div>
               ) : null}
+            </section>
+
+            <section className="evidence-anchors" aria-label={`${activeSection.title} source specificity`}>
+              <div className="insight-heading">
+                <ShieldCheck size={17} />
+                <span>Source Specificity</span>
+                <strong>{activeEvidenceAnchors.score}%</strong>
+              </div>
+              <div className="strength-meter large">
+                <span className={scoreTone(activeEvidenceAnchors.score)} style={{ width: `${activeEvidenceAnchors.score}%` }} />
+              </div>
+              <p>{activeEvidenceAnchors.label}</p>
+              {activeEvidenceAnchors.placeholderCount ? (
+                <small>{activeEvidenceAnchors.placeholderCount} unresolved placeholders remain.</small>
+              ) : null}
+              <div className="evidence-anchor-list">
+                {activeEvidenceAnchors.findings.map((finding) => (
+                  <article key={finding.id}>
+                    <span className={`status-badge ${evidenceTone(finding.status)}`}>
+                      {finding.status === "present" ? "Present" : finding.status === "placeholder" ? "Placeholder" : "Missing"}
+                    </span>
+                    <div>
+                      <strong>{finding.label}</strong>
+                      <small>{finding.detail}</small>
+                    </div>
+                  </article>
+                ))}
+              </div>
             </section>
 
             <section className="ai-suggestions" aria-label={`${activeSection.title} evaluator suggestions`}>

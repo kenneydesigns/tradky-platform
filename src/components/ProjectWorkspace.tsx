@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { ArrowLeft, ClipboardList, FileText, Layers3, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, ClipboardList, FileText, Layers3, Save, Settings2, Trash2 } from "lucide-react";
 import { EvaluationPanel } from "./EvaluationPanel";
+import { ProjectProfilePanel } from "./ProjectProfilePanel";
 import { TextInputPanel } from "./TextInputPanel";
 import { VolumeBuilder } from "./VolumeBuilder";
 import { evaluateProposal } from "../services/aiClient";
@@ -13,9 +14,10 @@ type ProjectWorkspaceProps = {
   onUpdateProject: (project: Project) => void;
 };
 
-type TabKey = "inputs" | "evaluation" | "builder";
+type TabKey = "profile" | "inputs" | "evaluation" | "builder";
 
 const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
+  { key: "profile", label: "Profile", icon: Settings2 },
   { key: "inputs", label: "Inputs", icon: FileText },
   { key: "evaluation", label: "Evaluation", icon: ClipboardList },
   { key: "builder", label: "Builder", icon: Layers3 },
@@ -38,10 +40,12 @@ export const ProjectWorkspace = ({
   const [activeTab, setActiveTab] = useState<TabKey>("inputs");
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState<{ tone: "info" | "success"; message: string } | null>(null);
 
   const runEvaluation = async () => {
     setIsEvaluating(true);
     setError("");
+    setNotice({ tone: "info", message: "Analyzing technical volume..." });
 
     try {
       const evaluation = await evaluateProposal({
@@ -50,8 +54,10 @@ export const ProjectWorkspace = ({
         proposalText: project.proposalText,
       });
       onUpdateProject({ ...project, evaluation });
+      setNotice({ tone: "success", message: `Evaluation complete. Readiness score: ${evaluation.readinessScore}.` });
       setActiveTab("evaluation");
     } catch (caught) {
+      setNotice(null);
       setError(caught instanceof Error ? caught.message : "Evaluation failed");
     } finally {
       setIsEvaluating(false);
@@ -101,6 +107,13 @@ export const ProjectWorkspace = ({
       </div>
 
       {error ? <div className="error-banner">{error}</div> : null}
+      {notice ? (
+        <div className={`status-banner ${notice.tone}`} role="status">
+          {notice.message}
+        </div>
+      ) : null}
+
+      {activeTab === "profile" ? <ProjectProfilePanel project={project} onUpdateProject={onUpdateProject} /> : null}
 
       {activeTab === "inputs" ? (
         <TextInputPanel

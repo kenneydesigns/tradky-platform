@@ -96,6 +96,8 @@ const downloadBlob = (blob: Blob, filename: string) => {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+
+  return filename;
 };
 
 const compactText = (value: string) => value.replace(/\s+/g, " ").trim();
@@ -887,7 +889,7 @@ export const buildEvaluationReportMarkdown = (project: Project) => {
 
 export const exportEvaluationReportMarkdown = (project: Project) => {
   const blob = new Blob([buildEvaluationReportMarkdown(project)], { type: "text/markdown;charset=utf-8" });
-  downloadBlob(blob, `${fileSafe(project.name)}-evaluation-report.md`);
+  return downloadBlob(blob, `${fileSafe(project.name)}-evaluation-report.md`);
 };
 
 export const buildMarkdown = (project: Project, options: TechnicalVolumeExportOptions = {}) => {
@@ -919,7 +921,7 @@ export const buildMarkdown = (project: Project, options: TechnicalVolumeExportOp
 
 export const exportMarkdown = (project: Project, options: TechnicalVolumeExportOptions = {}) => {
   const blob = new Blob([buildMarkdown(project, options)], { type: "text/markdown;charset=utf-8" });
-  downloadBlob(blob, `${fileSafe(project.name)}.md`);
+  return downloadBlob(blob, `${fileSafe(project.name)}.md`);
 };
 
 export const exportDocx = async (project: Project, options: TechnicalVolumeExportOptions = {}) => {
@@ -971,7 +973,7 @@ export const exportDocx = async (project: Project, options: TechnicalVolumeExpor
   });
 
   const blob = await Packer.toBlob(doc);
-  downloadBlob(blob, `${fileSafe(project.name)}.docx`);
+  return downloadBlob(blob, `${fileSafe(project.name)}.docx`);
 };
 
 export const exportEvaluationReportDocx = async (project: Project) => {
@@ -1456,7 +1458,7 @@ export const exportEvaluationReportDocx = async (project: Project) => {
   });
 
   const blob = await Packer.toBlob(doc);
-  downloadBlob(blob, `${fileSafe(project.name)}-evaluation-report.docx`);
+  return downloadBlob(blob, `${fileSafe(project.name)}-evaluation-report.docx`);
 };
 
 type PdfAlign = "left" | "center" | "right";
@@ -1968,5 +1970,5 @@ export const exportEvaluationReportPdf = (project: Project) => {
   pdf.drawParagraph(`Decision: ${report.finalDecision}`, { font: "F2", size: 12, after: 8 });
   pdf.drawParagraph(report.finalDecisionNote);
 
-  downloadBlob(pdf.buildBlob(), `${fileSafe(project.name)}-evaluation-report.pdf`);
+  return downloadBlob(pdf.buildBlob(), `${fileSafe(project.name)}-evaluation-report.pdf`);
 };

@@ -46,6 +46,15 @@ button {
   cursor: pointer;
 }
 
+button:focus-visible,
+.project-card:focus-visible,
+.sidebar-link:focus-visible,
+.sidebar-project:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgb(15 118 110 / 16%);
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
@@ -523,7 +532,8 @@ button:disabled {
 .section-editor,
 .modal,
 .action-strip,
-.error-banner {
+.error-banner,
+.status-banner {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel);
@@ -592,6 +602,47 @@ select:focus {
   gap: 10px;
   color: var(--muted);
   font-weight: 700;
+}
+
+.profile-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.profile-editor-panel {
+  padding: 16px;
+}
+
+.profile-editor-header,
+.profile-reference-panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.profile-reference-panel > header {
+  justify-content: flex-start;
+  padding: 16px 16px 0;
+}
+
+.profile-editor-header h2,
+.profile-reference-panel h3 {
+  margin: 0;
+}
+
+.profile-editor-grid {
+  padding: 0;
+}
+
+.profile-custom-instructions {
+  margin-top: 14px;
+}
+
+.profile-reference-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding-top: 0;
 }
 
 .score-band {
@@ -1374,7 +1425,7 @@ select:focus {
 
 .section-insights {
   display: grid;
-  grid-template-columns: minmax(220px, 0.75fr) minmax(0, 1.25fr);
+  grid-template-columns: minmax(210px, 0.7fr) minmax(240px, 0.85fr) minmax(0, 1.2fr);
   gap: 18px;
   margin: 14px 0;
   padding: 14px 0;
@@ -1383,7 +1434,8 @@ select:focus {
 }
 
 .strength-insight,
-.ai-suggestions {
+.ai-suggestions,
+.evidence-anchors {
   display: grid;
   align-content: start;
   gap: 8px;
@@ -1415,9 +1467,41 @@ select:focus {
 
 .strength-insight p,
 .ai-suggestions p,
-.strength-insight small {
+.strength-insight small,
+.evidence-anchors p,
+.evidence-anchors small {
   margin: 0;
   color: var(--muted);
+}
+
+.evidence-anchor-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.evidence-anchor-list article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.evidence-anchor-list strong,
+.evidence-anchor-list small {
+  display: block;
+}
+
+.evidence-anchor-list strong {
+  color: var(--ink);
+  font-size: 0.84rem;
+}
+
+.evidence-anchor-list small {
+  margin-top: 2px;
+  line-height: 1.35;
 }
 
 .ai-suggestions ul {
@@ -1670,6 +1754,37 @@ select:focus {
   padding: 12px 14px;
   color: var(--red);
   font-weight: 750;
+}
+
+.status-banner {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.status-banner.info {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.status-banner.success {
+  border-color: #b9e8c8;
+  background: #edf8f1;
+  color: #0e7c3a;
+}
+
+.status-banner.warning {
+  border-color: #f2d27b;
+  background: #fff9e8;
+  color: var(--amber);
+}
+
+.status-banner.error {
+  border-color: #f1c2c2;
+  background: #fff7f7;
+  color: var(--red);
 }
 
 .modal-backdrop {

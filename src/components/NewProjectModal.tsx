@@ -1,6 +1,7 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, KeyboardEvent, useState } from "react";
 import { X } from "lucide-react";
-import { ProjectInput } from "../types";
+import { DEFAULT_SOLICITATION_PROFILE_KEY, SOLICITATION_PROFILE_OPTIONS, getProfileDefaults } from "../data/solicitationProfiles";
+import { ProjectInput, SolicitationProfileKey } from "../types";
 
 type NewProjectModalProps = {
   isOpen: boolean;
@@ -8,13 +9,18 @@ type NewProjectModalProps = {
   onCreateProject: (input: ProjectInput) => void;
 };
 
+const defaultProfile = getProfileDefaults(DEFAULT_SOLICITATION_PROFILE_KEY);
+const programOptions = ["SBIR", "STTR", "SBIR/STTR", "BAA", "Other"];
+const phaseOptions = ["Phase I", "Phase II", "Direct to Phase II", "Other"];
+
 const initialInput: ProjectInput = {
   name: "",
-  agency: "DoD",
-  program: "SBIR",
+  agency: defaultProfile.agency,
+  program: defaultProfile.program,
   topicId: "",
   phase: "Phase I",
   dueDate: "",
+  solicitationProfile: defaultProfile.solicitationProfile,
 };
 
 export const NewProjectModal = ({ isOpen, onClose, onCreateProject }: NewProjectModalProps) => {
@@ -30,9 +36,26 @@ export const NewProjectModal = ({ isOpen, onClose, onCreateProject }: NewProject
     setInput(initialInput);
   };
 
+  const handleProfileChange = (solicitationProfile: SolicitationProfileKey) => {
+    const profileDefaults = getProfileDefaults(solicitationProfile);
+    setInput((current) => ({
+      ...current,
+      solicitationProfile: profileDefaults.solicitationProfile,
+      agency: profileDefaults.agency,
+      program: profileDefaults.program,
+    }));
+  };
+
+  const handleFormKeyDown = (event: KeyboardEvent<HTMLFormElement>) => {
+    if (event.key !== "Enter" || event.metaKey || event.ctrlKey) return;
+    if (event.target instanceof HTMLInputElement && !event.target.getAttribute("list")) {
+      event.preventDefault();
+    }
+  };
+
   return (
     <div className="modal-backdrop" role="presentation">
-      <form className="modal" onSubmit={handleSubmit}>
+      <form className="modal" onSubmit={handleSubmit} onKeyDown={handleFormKeyDown}>
         <header className="modal-header">
           <div>
             <p className="eyebrow">New project</p>
@@ -54,47 +77,64 @@ export const NewProjectModal = ({ isOpen, onClose, onCreateProject }: NewProject
           />
         </label>
 
+        <label>
+          Solicitation profile
+          <select
+            value={input.solicitationProfile}
+            onChange={(event) => handleProfileChange(event.target.value as SolicitationProfileKey)}
+          >
+            {SOLICITATION_PROFILE_OPTIONS.map((option) => (
+              <option key={option.key} value={option.key}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <div className="form-grid">
           <label>
             Agency
-            <select
+            <input
               value={input.agency}
               onChange={(event) => setInput((current) => ({ ...current, agency: event.target.value }))}
-            >
-              <option>DoD</option>
-              <option>NASA</option>
-              <option>NSF</option>
-              <option>DOE</option>
-              <option>NIH</option>
-              <option>DHS</option>
-              <option>Other</option>
-            </select>
+            />
           </label>
 
           <label>
             Program
-            <select
+            <input
+              list="new-project-program-options"
               value={input.program}
               onChange={(event) => setInput((current) => ({ ...current, program: event.target.value }))}
-            >
-              <option>SBIR</option>
-              <option>STTR</option>
-              <option>BAA</option>
-              <option>Other</option>
-            </select>
+            />
+            <datalist id="new-project-program-options">
+              {programOptions.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
           </label>
 
           <label>
             Phase
-            <select
+            <input
+              list="new-project-phase-options"
               value={input.phase}
               onChange={(event) => setInput((current) => ({ ...current, phase: event.target.value }))}
-            >
-              <option>Phase I</option>
-              <option>Phase II</option>
-              <option>Direct to Phase II</option>
-              <option>Other</option>
-            </select>
+            />
+            <datalist id="new-project-phase-options">
+              {phaseOptions.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
+          </label>
+
+          <label>
+            Topic ID
+            <input
+              value={input.topicId}
+              onChange={(event) => setInput((current) => ({ ...current, topicId: event.target.value }))}
+              placeholder="AF26.1-123"
+            />
           </label>
 
           <label>
@@ -106,15 +146,6 @@ export const NewProjectModal = ({ isOpen, onClose, onCreateProject }: NewProject
             />
           </label>
         </div>
-
-        <label>
-          Topic ID
-          <input
-            value={input.topicId}
-            onChange={(event) => setInput((current) => ({ ...current, topicId: event.target.value }))}
-            placeholder="AF26.1-123"
-          />
-        </label>
 
         <footer className="modal-actions">
           <button className="button ghost" type="button" onClick={onClose}>
