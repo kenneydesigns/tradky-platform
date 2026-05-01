@@ -13,19 +13,76 @@ const EVALUATION_ENDPOINT = import.meta.env.VITE_AI_ENDPOINT ?? "/api/evaluate";
 const DRAFT_SECTIONS_ENDPOINT = import.meta.env.VITE_AI_DRAFT_ENDPOINT ?? "/api/draft-sections";
 const SECTION_SUGGESTIONS_ENDPOINT = import.meta.env.VITE_AI_SUGGESTIONS_ENDPOINT ?? "/api/section-suggestions";
 
-const readApiError = async (response: Response, fallback: string) => {
+type ApiErrorMessage = {
+  message: string;
+  canUseLocalFallback: boolean;
+};
+
+class ApiJsonError extends Error {}
+
+const isJsonResponse = (response: Response) => response.headers.get("content-type")?.includes("application/json");
+
+const readApiError = async (response: Response, fallback: string): Promise<ApiErrorMessage> => {
   let message = fallback;
 
-  try {
-    const payload = (await response.json()) as { error?: string };
-    if (payload.error) {
-      message = payload.error;
+  if (isJsonResponse(response)) {
+    try {
+      const payload = (await response.json()) as { error?: string };
+      if (payload.error) {
+        message = payload.error;
+      }
+    } catch {
+      // Treat malformed JSON as an unavailable API route and use local fallback where possible.
+      return { message, canUseLocalFallback: true };
     }
-  } catch {
-    // Keep the fallback when the server does not return JSON.
+
+    return { message, canUseLocalFallback: false };
   }
 
-  return message;
+  return { message, canUseLocalFallback: true };
+};
+
+const postJson = async <Input, Result>({
+  endpoint,
+  input,
+  fallback,
+  failureMessage,
+}: {
+  endpoint: string;
+  input: Input;
+  fallback: (input: Input) => Promise<Result>;
+  failureMessage: string;
+}): Promise<Result> => {
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    });
+
+    if (!response.ok) {
+      const apiError = await readApiError(response, failureMessage);
+      if (apiError.canUseLocalFallback) {
+        return fallback(input);
+      }
+
+      throw new ApiJsonError(apiError.message);
+    }
+
+    if (!isJsonResponse(response)) {
+      return fallback(input);
+    }
+
+    return response.json() as Promise<Result>;
+  } catch (caught) {
+    if (caught instanceof ApiJsonError) {
+      throw caught;
+    }
+
+    return fallback(input);
+  }
 };
 
 export const evaluateProposal = async (input: EvaluateInput): Promise<EvaluationResult> => {
@@ -42,7 +99,8 @@ export const evaluateProposal = async (input: EvaluateInput): Promise<Evaluation
   });
 
   if (!response.ok) {
-    throw new Error(await readApiError(response, "Evaluation request failed"));
+    const apiError = await readApiError(response, "Evaluation request failed");
+    throw new Error(apiError.message);
   }
 
   return response.json() as Promise<EvaluationResult>;
@@ -53,19 +111,12 @@ export const draftVolumeSections = async (input: DraftSectionsInput): Promise<Dr
     return generateMockDraftSections(input);
   }
 
-  const response = await fetch(DRAFT_SECTIONS_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(input),
+  return postJson({
+    endpoint: DRAFT_SECTIONS_ENDPOINT,
+    input,
+    fallback: generateMockDraftSections,
+    failureMessage: "Section draft request failed",
   });
-
-  if (!response.ok) {
-    throw new Error(await readApiError(response, "Section draft request failed"));
-  }
-
-  return response.json() as Promise<DraftSectionsResult>;
 };
 
 export const suggestVolumeSections = async (input: SectionSuggestionsInput): Promise<SectionSuggestionsResult> => {
@@ -73,17 +124,10 @@ export const suggestVolumeSections = async (input: SectionSuggestionsInput): Pro
     return generateMockSectionSuggestions(input);
   }
 
-  const response = await fetch(SECTION_SUGGESTIONS_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(input),
+  return postJson({
+    endpoint: SECTION_SUGGESTIONS_ENDPOINT,
+    input,
+    fallback: generateMockSectionSuggestions,
+    failureMessage: "Section suggestions request failed",
   });
-
-  if (!response.ok) {
-    throw new Error(await readApiError(response, "Section suggestions request failed"));
-  }
-
-  return response.json() as Promise<SectionSuggestionsResult>;
 };
